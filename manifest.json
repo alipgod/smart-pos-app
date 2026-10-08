@@ -1,0 +1,12 @@
+{
+  "name": "Warung Kasir",
+  "short_name": "Kasir",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#EDEAE1",
+  "theme_color": "#2F6F4E",
+  "orientation": "any",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
