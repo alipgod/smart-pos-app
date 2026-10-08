@@ -1,0 +1,2604 @@
+<!DOCTYPE html>
+<html lang="id">
+
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+	<title>Warung Kasir</title>
+	<meta name="theme-color" content="#2F6F4E">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="apple-mobile-web-app-title" content="Kasir">
+	<link rel="manifest" href="manifest.json">
+	<link rel="icon" href="icon.svg">
+	<link rel="apple-touch-icon" href="icon.svg">
+	<script src="libs/react.production.min.js"></script>
+	<script src="libs/react-dom.production.min.js"></script>
+	<script src="libs/babel.min.js"></script>
+	<script src="libs/xlsx.full.min.js"></script>
+	<style>
+		:root {
+			box-sizing: border-box;
+			padding-top: env(safe-area-inset-top, 0px);
+			padding-bottom: env(safe-area-inset-bottom, 0px);
+		}
+
+		html {
+			scroll-padding-top: env(safe-area-inset-top, 0px);
+			height: 100%;
+		}
+
+		html,
+		body {
+			margin: 0;
+			height: 100%;
+			background: #EDEAE1;
+			overscroll-behavior: none;
+		}
+
+		#root {
+			height: 100%;
+		}
+
+		@media (max-width: 560px) {
+			.ka-sidebar {
+				width: 64px;
+				padding: 14px 0;
+			}
+
+			.ka-sidebar-mark {
+				width: 36px;
+				height: 36px;
+				font-size: 12px;
+				margin-bottom: 14px;
+			}
+
+			.ka-tab {
+				width: 52px;
+				font-size: 10px;
+				padding: 9px 2px;
+			}
+
+			.ka-topbar {
+				padding: 16px 16px 12px;
+			}
+
+			.ka-topbar h1 {
+				font-size: 18px;
+			}
+
+			.ka-topbar p {
+				font-size: 11.5px;
+			}
+
+			.ka-body {
+				padding: 16px;
+			}
+
+			.ka-kasir-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.ka-cart {
+				position: static;
+				max-height: none;
+			}
+
+			.ka-summary-row {
+				grid-template-columns: 1fr;
+			}
+
+			.ka-product-grid {
+				grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div id="root"></div>
+	<script type="text/babel" data-presets="react">
+		window.storage = {
+			async get(key, shared) {
+				try {
+					const v = localStorage.getItem('kasir_' + key);
+					return v !== null ? { key, value: v, shared: !!shared } : null;
+				} catch (e) { return null; }
+			},
+			async set(key, value, shared) {
+				try {
+					localStorage.setItem('kasir_' + key, value);
+					return { key, value, shared: !!shared };
+				} catch (e) { return null; }
+			},
+			async delete(key, shared) {
+				try { localStorage.removeItem('kasir_' + key); return { key, deleted: true, shared: !!shared }; }
+				catch (e) { return null; }
+			},
+			async list(prefix, shared) {
+				try {
+					const keys = Object.keys(localStorage).filter(k => k.startsWith('kasir_' + (prefix || ''))).map(k => k.replace('kasir_', ''));
+					return { keys, prefix, shared: !!shared };
+				} catch (e) { return null; }
+			}
+		};
+
+
+		const STYLE = `
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.kasir-app {
+  --paper: #EDEAE1;
+  --paper-light: #F7F5EF;
+  --ink: #20261F;
+  --ink-soft: #6B7268;
+  --accent: #2F6F4E;
+  --accent-dark: #204E37;
+  --accent-light: #E4EEE7;
+  --rust: #B5502C;
+  --rust-light: #F3E2D9;
+  --border: #D6CFBE;
+  --danger: #A23B2E;
+  --danger-light: #F5E1DD;
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  box-sizing: border-box;
+}
+.kasir-app * { box-sizing: border-box; }
+.kasir-app .mono { font-family: 'IBM Plex Mono', monospace; }
+.kasir-app .display { font-family: 'Space Grotesk', sans-serif; }
+
+.ka-sidebar {
+  width: 96px;
+  flex-shrink: 0;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 6px;
+}
+.ka-sidebar-mark {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+  color: var(--paper-light);
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+}
+.ka-sidebar-divider { width: 36px; height: 1px; background: rgba(255,255,255,0.12); margin: 10px 0; }
+.ka-tab {
+  width: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 4px;
+  border-radius: 10px;
+  color: #A8AFA2;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background .15s ease, color .15s ease;
+}
+.ka-tab:hover { background: rgba(255,255,255,0.06); color: #E7E9E3; }
+.ka-tab.active { background: var(--accent); color: #fff; }
+
+.ka-main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.ka-topbar {
+  padding: 22px 32px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper-light);
+  flex-shrink: 0;
+}
+.ka-topbar h1 { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.01em; }
+.ka-topbar p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+
+.ka-body { flex: 1; overflow: auto; padding: 24px 32px 32px; }
+
+/* --- Kasir tab --- */
+.ka-kasir-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+.ka-search-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.ka-search-box {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  background: #fff; border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 12px;
+}
+.ka-search-box input { border: none; outline: none; flex: 1; font-size: 14px; font-family: 'IBM Plex Sans', sans-serif; background: transparent; color: var(--ink); }
+.ka-search-box svg { color: var(--ink-soft); flex-shrink: 0; }
+
+.ka-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.ka-chip {
+  padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid var(--border); background: #fff; color: var(--ink-soft); cursor: pointer;
+  transition: all .12s ease;
+}
+.ka-chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.ka-category-group { margin-bottom: 22px; }
+.ka-category-title { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; color: var(--ink-soft); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.ka-product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.ka-product-card {
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 8px;
+  transition: transform .1s ease, box-shadow .1s ease, border-color .1s ease;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.ka-product-card:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 3px 10px rgba(47,111,78,0.12); transform: translateY(-1px); }
+.ka-product-card:disabled { opacity: 0.45; cursor: not-allowed; }
+.ka-product-card .name { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.ka-product-card .cat { font-size: 11px; color: var(--ink-soft); }
+.ka-product-card .price { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--rust); font-weight: 600; margin-top: auto; }
+.ka-stock-badge { align-self: flex-start; font-size: 10.5px; padding: 2px 7px; border-radius: 5px; background: var(--accent-light); color: var(--accent-dark); font-weight: 500; }
+.ka-stock-badge.low { background: var(--rust-light); color: var(--rust); }
+.ka-stock-badge.out { background: var(--danger-light); color: var(--danger); }
+
+.ka-cart {
+  background: var(--paper-light); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px; position: sticky; top: 0; display: flex; flex-direction: column; max-height: calc(100vh - 160px);
+}
+.ka-cart h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.ka-cart-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.ka-held-badge { border: 1px solid var(--rust); background: var(--rust-light); color: var(--rust); font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; }
+.ka-cart .empty { color: var(--ink-soft); font-size: 13px; padding: 30px 4px; text-align: center; line-height: 1.5; }
+.ka-cart-items { flex: 1; overflow-y: auto; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.ka-cart-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; border-bottom: 1px dashed var(--border); padding-bottom: 10px; }
+.ka-cart-item .info { flex: 1; min-width: 0; }
+.ka-cart-item .info .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ka-cart-item .info .p { color: var(--ink-soft); font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
+.ka-qty-ctrl { display: flex; align-items: center; gap: 4px; }
+.ka-qty-ctrl button { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink); }
+.ka-qty-ctrl button:disabled { opacity: 0.35; cursor: not-allowed; }
+.ka-qty-ctrl span { min-width: 18px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+.ka-cart-item .rm { border: none; background: none; color: var(--ink-soft); cursor: pointer; padding: 2px; }
+.ka-cart-item .rm:hover { color: var(--danger); }
+
+.ka-cart-summary { border-top: 1px solid var(--border); padding-top: 12px; margin-top: auto; }
+.ka-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 8px; }
+.ka-row.total { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; margin: 10px 0; }
+.ka-row.total span:last-child { color: var(--rust); font-family: 'IBM Plex Mono', monospace; }
+.ka-cash-input { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; margin-bottom: 8px; outline: none; }
+.ka-cash-input:focus { border-color: var(--accent); }
+
+.ka-btn { border: none; border-radius: 9px; padding: 11px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-family: 'IBM Plex Sans', sans-serif; transition: opacity .12s ease; }
+.ka-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ka-btn.primary { background: var(--accent); color: #fff; width: 100%; }
+.ka-btn.primary:hover:not(:disabled) { background: var(--accent-dark); }
+.ka-btn.secondary { background: #fff; border: 1px solid var(--border); color: var(--ink); }
+.ka-btn.secondary:hover { border-color: var(--ink); }
+.ka-btn.danger { background: var(--danger); color: #fff; }
+.ka-btn.ghost { background: transparent; color: var(--ink-soft); padding: 8px 10px; }
+
+/* --- Produk tab --- */
+.ka-produk-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.ka-produk-head h2 { font-family: 'Space Grotesk', sans-serif; font-size: 18px; margin: 0; }
+.ka-table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.ka-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ka-table th { text-align: left; padding: 12px 16px; background: var(--paper-light); color: var(--ink-soft); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--border); }
+.ka-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ka-table tr:last-child td { border-bottom: none; }
+.ka-table .price-cell { font-family: 'IBM Plex Mono', monospace; color: var(--rust); font-weight: 600; }
+.ka-table .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.ka-icon-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border); background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); }
+.ka-icon-btn:hover { border-color: var(--ink); color: var(--ink); }
+.ka-icon-btn.del:hover { border-color: var(--danger); color: var(--danger); }
+
+.ka-empty-state { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
+.ka-empty-state svg { margin-bottom: 12px; opacity: 0.5; }
+.ka-empty-state p { font-size: 13.5px; margin: 0; }
+
+/* --- Modal --- */
+.ka-modal-overlay { position: fixed; inset: 0; background: rgba(32,38,31,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.ka-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 420px; padding: 24px; max-height: 90vh; overflow-y: auto; }
+.ka-modal h3 { font-family: 'Space Grotesk', sans-serif; font-size: 17px; margin: 0 0 18px; display: flex; align-items: center; justify-content: space-between; }
+.ka-modal h3 button { border: none; background: none; cursor: pointer; color: var(--ink-soft); }
+.ka-field { margin-bottom: 14px; }
+.ka-field label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 5px; }
+.ka-field input { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; font-family: 'IBM Plex Sans', sans-serif; outline: none; }
+.ka-field input:focus { border-color: var(--accent); }
+.ka-recipe-section { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 14px; }
+.ka-recipe-section > label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; }
+.ka-recipe-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ka-recipe-row select { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; font-family: 'IBM Plex Sans', sans-serif; }
+.ka-recipe-row input { width: 64px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; font-family: 'IBM Plex Mono', monospace; }
+.ka-recipe-row .unit { font-size: 11px; color: var(--ink-soft); min-width: 34px; }
+.ka-backup-section { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 16px; }
+.ka-backup-section label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+.ka-backup-section p { font-size: 11.5px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
+.ka-field-row { display: flex; gap: 10px; }
+.ka-field-row .ka-field { flex: 1; }
+.ka-modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+.ka-modal-actions .ka-btn { flex: 1; }
+.ka-modal.ka-modal-lg { max-width: 480px; }
+.ka-calc-card { background: var(--paper-light); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+.ka-calc-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.ka-chip-group { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.ka-mini-chip { border: 1px solid var(--border); background: #fff; border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; color: var(--ink-soft); transition: all .12s ease; }
+.ka-mini-chip:hover { border-color: var(--accent); color: var(--accent); }
+.ka-mini-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.ka-rec-box { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+.ka-apply-btn { border: 1px solid var(--accent); background: #fff; color: var(--accent-dark); font-size: 11px; font-weight: 600; border-radius: 6px; padding: 4px 8px; cursor: pointer; transition: all .12s ease; }
+.ka-apply-btn:hover { background: var(--accent); color: #fff; }
+.ka-stat-badge { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600; margin-top: 8px; width: 100%; box-sizing: border-box; line-height: 1.4; }
+.ka-stat-badge.success { background: #E4F2E9; color: var(--accent-dark); border: 1px solid #B8E0C4; }
+.ka-stat-badge.warning { background: #FEF3E2; color: #B56200; border: 1px solid #FAD7A0; }
+.ka-stat-badge.danger { background: #FDE8E8; color: var(--danger); border: 1px solid #F8B4B4; }
+
+/* --- Riwayat tab --- */
+.ka-summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+.ka-insight-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 22px; }
+.ka-insight-card { background: var(--accent-light); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+.ka-insight-icon { font-size: 22px; }
+.ka-insight-label { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 3px; }
+.ka-insight-value { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; color: var(--accent-dark); }
+.ka-insight-value .mono { font-weight: 500; font-size: 12px; color: var(--ink-soft); }
+@media (max-width: 560px) { .ka-insight-row { grid-template-columns: 1fr; } }
+.ka-summary-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.ka-summary-card .label { font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ka-summary-card .value { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+.ka-summary-card .value.rust { color: var(--rust); }
+.ka-period-toggle { display: flex; gap: 4px; margin-top: 10px; }
+.ka-period-toggle button { flex: 1; border: 1px solid var(--border); background: #fff; color: var(--ink-soft); font-size: 10.5px; font-weight: 500; padding: 4px 2px; border-radius: 6px; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; }
+.ka-period-toggle button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ka-summary-card-clickable { cursor: pointer; transition: border-color .12s ease, box-shadow .12s ease; }
+.ka-summary-card-clickable:hover { border-color: var(--accent); box-shadow: 0 3px 10px rgba(47,111,78,0.1); }
+.ka-card-arrow { color: var(--ink-soft); font-weight: 400; }
+.ka-analytics-layout { display: grid; grid-template-columns: 200px 1fr; gap: 22px; align-items: start; }
+.ka-analytics-sidebar { background: var(--paper-light); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.ka-analytics-sidebar label { font-size: 11.5px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+.ka-analytics-main { min-width: 0; }
+.ka-chart { display: flex; align-items: flex-end; gap: 10px; min-height: 200px; padding: 10px 6px 0; overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; }
+.ka-chart-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; min-width: 56px; flex: 1; height: 200px; }
+.ka-chart-value { font-size: 9.5px; color: var(--ink-soft); margin-bottom: 4px; white-space: nowrap; }
+.ka-chart-bar { width: 26px; border-radius: 4px 4px 0 0; transition: height .2s ease; }
+.ka-chart-label { font-size: 10px; color: var(--ink-soft); margin: 8px 0 10px; text-align: center; white-space: nowrap; }
+@media (max-width: 560px) {
+  .ka-analytics-layout { grid-template-columns: 1fr; }
+}
+
+.ka-date-group { margin-bottom: 22px; }
+.ka-date-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.ka-date-header-clickable { cursor: pointer; user-select: none; }
+.ka-chevron { display: inline-block; font-size: 10px; transition: transform .15s ease; color: var(--ink-soft); }
+.ka-chevron.open { transform: rotate(90deg); }
+.ka-date-header span:first-child { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13.5px; }
+.ka-date-header span:last-child { font-size: 11.5px; color: var(--ink-soft); }
+.ka-date-itemcounts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ka-date-breakdown { background: var(--paper-light); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+.ka-breakdown-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12.5px; }
+.ka-breakdown-row + .ka-breakdown-row { border-top: 1px dashed var(--border); }
+.ka-breakdown-row .n { flex: 1; font-weight: 600; }
+.ka-breakdown-row .q { color: var(--ink-soft); font-size: 11.5px; width: 56px; }
+.ka-breakdown-row .t { color: var(--rust); font-weight: 600; width: 90px; text-align: right; }
+.ka-trx-list { display: flex; flex-direction: column; gap: 10px; }
+.ka-trx-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: pointer; }
+.ka-trx-head { display: flex; justify-content: space-between; align-items: center; }
+.ka-trx-head .id { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-soft); }
+.ka-trx-head .total { font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: var(--rust); font-size: 14.5px; }
+.ka-trx-sub { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+.ka-trx-items { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.ka-trx-items .it { display: flex; justify-content: space-between; color: var(--ink-soft); }
+.ka-trx-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* --- Receipt --- */
+#receipt-content { font-family: 'IBM Plex Mono', monospace; }
+.ka-receipt-head { text-align: center; margin-bottom: 14px; }
+.ka-receipt-head .store { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
+.ka-receipt-head .meta { font-size: 11px; color: var(--ink-soft); margin-top: 4px; }
+.ka-receipt-divider { border-top: 1px dashed var(--border); margin: 10px 0; }
+.ka-receipt-line { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 6px; }
+.ka-receipt-line .qp { color: var(--ink-soft); font-size: 11px; }
+.ka-receipt-total-row { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; margin-top: 4px; }
+
+@media print {
+  body * { visibility: hidden; }
+  #receipt-content, #receipt-content * { visibility: visible; }
+  #receipt-content { position: fixed; top: 0; left: 0; width: 300px; padding: 16px; }
+}
+`;
+
+
+		const { useState, useEffect, useRef, useMemo } = React;
+		function Ico({ size = 16, children }) {
+			return <span style={{ fontSize: size, lineHeight: 1, display: 'inline-flex', verticalAlign: 'middle' }}>{children}</span>;
+		}
+
+		const formatRupiah = (n) => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
+		const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+		const getWeekKey = (ts) => {
+			const d = new Date(ts);
+			const day = d.getDay();
+			d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+			d.setHours(0, 0, 0, 0);
+			return d.getTime();
+		};
+		const getMonthKey = (ts) => {
+			const d = new Date(ts);
+			return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+		};
+		const formatBucketLabel = (ts, grouping) => {
+			if (grouping === 'month') return new Date(ts).toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
+			const start = new Date(ts);
+			const end = new Date(ts); end.setDate(end.getDate() + 6);
+			const f = (x) => x.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+			return `${f(start)}-${f(end)}`;
+		};
+
+		function MiniBarChart({ data, color, negativeColor }) {
+			if (!data.length) {
+				return <div className="ka-empty-state" style={{ padding: 30 }}><p>Belum ada data untuk periode ini.</p></div>;
+			}
+			const max = Math.max(...data.map(d => Math.abs(d.value)), 1);
+			return (
+				<div className="ka-chart">
+					{data.map((d, i) => (
+						<div className="ka-chart-col" key={i}>
+							<span className="ka-chart-value mono">{formatRupiah(d.value)}</span>
+							<div className="ka-chart-bar" style={{ height: `${Math.max(4, (Math.abs(d.value) / max) * 150)}px`, background: d.value < 0 && negativeColor ? negativeColor : color }} />
+							<span className="ka-chart-label">{d.label}</span>
+						</div>
+					))}
+				</div>
+			);
+		}
+
+		const SEED_PRODUCTS = [
+			{ id: uid(), name: 'Americano', price: 10000, stock: 20, category: 'Coffee' },
+			{ id: uid(), name: 'Cappuccino', price: 15000, stock: 20, category: 'Coffee' },
+			{ id: uid(), name: 'Gula Aren', price: 15000, stock: 20, category: 'Coffee' },
+			{ id: uid(), name: 'Latte', price: 15000, stock: 20, category: 'Coffee' },
+			{ id: uid(), name: 'Es Coklat Jumbo', price: 15000, stock: 20, category: 'Non Coffee' },
+			{ id: uid(), name: 'Es Coklat Large', price: 10000, stock: 20, category: 'Non Coffee' },
+			{ id: uid(), name: 'Es Coklat Reguler', price: 8000, stock: 20, category: 'Non Coffee' },
+			{ id: uid(), name: 'Es Teh Telang', price: 5000, stock: 20, category: 'Non Coffee' },
+			{ id: uid(), name: 'Roti Gembul', price: 3000, stock: 20, category: 'Add-on' },
+			{ id: uid(), name: 'Roti Gembul', price: 2000, stock: 20, category: 'Add-on' },
+		];
+
+		const SEED_EXPENSE_ITEMS = [
+			{ id: uid(), name: 'Bubuk Coklat 1KG', unit: 'kg', price: 0 },
+			{ id: uid(), name: 'Susu Kental Manis (kaleng)', unit: 'kaleng', price: 0 },
+			{ id: uid(), name: 'Susu UHT', unit: 'liter', price: 0 },
+			{ id: uid(), name: 'Gelas 14 oz', unit: 'pcs', price: 0 },
+			{ id: uid(), name: 'Gelas 16 oz', unit: 'pcs', price: 0 },
+			{ id: uid(), name: 'Gas', unit: 'tabung', price: 0 },
+			{ id: uid(), name: 'Es Batu', unit: 'kg', price: 0 },
+			{ id: uid(), name: 'Listrik', unit: 'bulan', price: 0 },
+			{ id: uid(), name: 'Plastik', unit: 'pack', price: 0 },
+		];
+
+		function KasirApp() {
+			const [ready, setReady] = useState(false);
+			const [products, setProducts] = useState([]);
+			const [transactions, setTransactions] = useState([]);
+			const [activeTab, setActiveTab] = useState('kasir');
+
+			// kasir state
+			const [cart, setCart] = useState([]);
+			const [search, setSearch] = useState('');
+			const [activeCategory, setActiveCategory] = useState('Semua');
+			const [cashInput, setCashInput] = useState('');
+			const [discountInput, setDiscountInput] = useState('');
+			const [paymentMethod, setPaymentMethod] = useState('tunai'); // tunai | qris
+			const [heldCarts, setHeldCarts] = useState([]);
+			const [showHeldList, setShowHeldList] = useState(false);
+			const [lastTransaction, setLastTransaction] = useState(null);
+			const [showReceipt, setShowReceipt] = useState(false);
+
+			// produk state
+			const [productModal, setProductModal] = useState(null); // null | 'new' | product object
+			const [pForm, setPForm] = useState({ name: '', price: '', stock: '', category: '', recipe: [], portionYield: '1', targetMargin: '60' });
+
+			// riwayat state
+			const [expandedTrx, setExpandedTrx] = useState(null);
+			const [collapsedDates, setCollapsedDates] = useState({});
+			const toggleDateGroup = (dateKey) => setCollapsedDates(prev => ({ ...prev, [dateKey]: !prev[dateKey] }));
+
+			// modal/pengeluaran state
+			const [expenseItems, setExpenseItems] = useState([]);
+			const [expenseEntries, setExpenseEntries] = useState([]);
+			const [expenseItemModal, setExpenseItemModal] = useState(null); // null | 'new' | item object
+			const [eiForm, setEiForm] = useState({ name: '', unit: '', price: '', qtyBeli: '' });
+			const [showLogExpense, setShowLogExpense] = useState(false);
+			const [logForm, setLogForm] = useState({ itemId: '', qty: '1', unitPrice: '' });
+			const [editingExpenseEntryId, setEditingExpenseEntryId] = useState(null);
+			const [expensePeriod, setExpensePeriod] = useState('today');
+			const [marginPeriod, setMarginPeriod] = useState('today');
+			const [modalView, setModalView] = useState('default'); // default | expense | margin
+			const [analyticsGrouping, setAnalyticsGrouping] = useState('week'); // week | month
+			const [expenseFilterItem, setExpenseFilterItem] = useState('all');
+
+			const [saveError, setSaveError] = useState(false);
+
+			// pengaturan toko
+			const [storeSettings, setStoreSettings] = useState({ name: '', logo: null });
+			const [showSettings, setShowSettings] = useState(false);
+			const [settingsForm, setSettingsForm] = useState({ name: '', logo: null });
+
+			// ---- load data ----
+			useEffect(() => {
+				(async () => {
+					let loadedProducts = SEED_PRODUCTS;
+					let loadedTransactions = [];
+					try {
+						const p = await window.storage.get('products');
+						if (p && p.value) loadedProducts = JSON.parse(p.value);
+					} catch (e) { /* no existing products, keep seed */ }
+					try {
+						const t = await window.storage.get('transactions');
+						if (t && t.value) loadedTransactions = JSON.parse(t.value);
+					} catch (e) { /* none yet */ }
+					let loadedSettings = { name: '', logo: null };
+					try {
+						const s = await window.storage.get('store-settings');
+						if (s && s.value) loadedSettings = JSON.parse(s.value);
+					} catch (e) { /* none yet */ }
+					let loadedExpenseItems = SEED_EXPENSE_ITEMS;
+					try {
+						const ei = await window.storage.get('expense-items');
+						if (ei && ei.value) loadedExpenseItems = JSON.parse(ei.value);
+					} catch (e) { /* keep seed */ }
+					let loadedExpenseEntries = [];
+					try {
+						const ee = await window.storage.get('expense-entries');
+						if (ee && ee.value) loadedExpenseEntries = JSON.parse(ee.value);
+					} catch (e) { /* none yet */ }
+					let loadedHeldCarts = [];
+					try {
+						const hc = await window.storage.get('held-carts');
+						if (hc && hc.value) loadedHeldCarts = JSON.parse(hc.value);
+					} catch (e) { /* none yet */ }
+					setProducts(loadedProducts);
+					setTransactions(loadedTransactions);
+					setStoreSettings(loadedSettings);
+					setSettingsForm(loadedSettings);
+					setExpenseItems(loadedExpenseItems);
+					setExpenseEntries(loadedExpenseEntries);
+					setHeldCarts(loadedHeldCarts);
+					setReady(true);
+					// persist seed if this was a first run
+					try {
+						const existing = await window.storage.get('products');
+						if (!existing) await window.storage.set('products', JSON.stringify(loadedProducts));
+					} catch (e) { /* ignore */ }
+					try {
+						const existingEi = await window.storage.get('expense-items');
+						if (!existingEi) await window.storage.set('expense-items', JSON.stringify(loadedExpenseItems));
+					} catch (e) { /* ignore */ }
+				})();
+			}, []);
+
+			const saveProducts = async (next) => {
+				setProducts(next);
+				try {
+					const res = await window.storage.set('products', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const saveExpenseItems = async (next) => {
+				setExpenseItems(next);
+				try {
+					const res = await window.storage.set('expense-items', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const saveExpenseEntries = async (next) => {
+				setExpenseEntries(next);
+				try {
+					const res = await window.storage.set('expense-entries', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const openNewExpenseItem = () => { setEiForm({ name: '', unit: '', price: '', qtyBeli: '' }); setExpenseItemModal('new'); };
+			const openEditExpenseItem = (it) => { setEiForm({ name: it.name, unit: it.unit || '', price: String(it.price || 0), qtyBeli: String(it.qtyBeli || 1) }); setExpenseItemModal(it); };
+
+			const submitExpenseItem = async () => {
+				if (!eiForm.name.trim()) return;
+				const payload = { name: eiForm.name.trim(), unit: eiForm.unit.trim(), price: Math.max(0, parseFloat(eiForm.price) || 0), qtyBeli: Math.max(0, parseFloat(eiForm.qtyBeli) || 1) };
+				if (expenseItemModal === 'new') {
+					await saveExpenseItems([...expenseItems, { id: uid(), ...payload }]);
+				} else {
+					await saveExpenseItems(expenseItems.map(it => it.id === expenseItemModal.id ? { ...it, ...payload } : it));
+				}
+				setExpenseItemModal(null);
+			};
+
+			const deleteExpenseItem = async (id) => {
+				await saveExpenseItems(expenseItems.filter(it => it.id !== id));
+			};
+
+			const openLogExpense = () => {
+				const first = expenseItems[0];
+				setEditingExpenseEntryId(null);
+				setLogForm({ itemId: first ? first.id : '', qty: '1', unitPrice: first ? String(first.price) : '' });
+				setShowLogExpense(true);
+			};
+
+			const openEditExpenseEntry = (entry) => {
+				setEditingExpenseEntryId(entry.id);
+				setLogForm({ itemId: entry.itemId, qty: String(entry.qty), unitPrice: String(entry.unitPrice) });
+				setShowLogExpense(true);
+			};
+
+			const submitLogExpense = async () => {
+				const item = expenseItems.find(it => it.id === logForm.itemId);
+				if (!item) return;
+				const qty = Math.max(0, parseFloat(logForm.qty) || 0);
+				const unitPrice = Math.max(0, parseFloat(logForm.unitPrice) || 0);
+				if (qty <= 0) return;
+				if (editingExpenseEntryId) {
+					await saveExpenseEntries(expenseEntries.map(e => e.id === editingExpenseEntryId
+						? { ...e, itemId: item.id, itemName: item.name, unit: item.unit, qty, unitPrice, total: qty * unitPrice }
+						: e));
+				} else {
+					const entry = { id: uid().toUpperCase(), timestamp: Date.now(), itemId: item.id, itemName: item.name, unit: item.unit, qty, unitPrice, total: qty * unitPrice };
+					await saveExpenseEntries([entry, ...expenseEntries]);
+				}
+				// perbarui harga terakhir di katalog biar kepake lagi di pencatatan berikutnya
+				await saveExpenseItems(expenseItems.map(it => it.id === item.id ? { ...it, price: unitPrice } : it));
+				setEditingExpenseEntryId(null);
+				setShowLogExpense(false);
+			};
+
+			const deleteExpenseEntry = async (id) => {
+				await saveExpenseEntries(expenseEntries.filter(e => e.id !== id));
+			};
+
+			const saveStoreSettings = async (next) => {
+				setStoreSettings(next);
+				try {
+					const res = await window.storage.set('store-settings', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const handleLogoUpload = (e) => {
+				const file = e.target.files && e.target.files[0];
+				if (!file) return;
+				const reader = new FileReader();
+				reader.onload = () => setSettingsForm(f => ({ ...f, logo: reader.result }));
+				reader.readAsDataURL(file);
+			};
+
+			const submitSettings = async () => {
+				await saveStoreSettings(settingsForm);
+				setShowSettings(false);
+			};
+
+			const exportAllData = () => {
+				const payload = {
+					exportedAt: new Date().toISOString(),
+					app: 'warung-kasir-backup',
+					version: 1,
+					products, transactions, storeSettings, expenseItems, expenseEntries,
+				};
+				const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				const dateStr = new Date().toISOString().slice(0, 10);
+				a.href = url;
+				a.download = `backup-kasir-${dateStr}.json`;
+				a.click();
+				setTimeout(() => URL.revokeObjectURL(url), 1000);
+			};
+
+			const exportExcelReport = () => {
+				if (typeof XLSX === 'undefined') {
+					window.alert('Library Excel belum termuat. Buka aplikasi dengan internet sekali, lalu coba lagi.');
+					return;
+				}
+				if (transactions.length === 0 && expenseEntries.length === 0) {
+					window.alert('Belum ada data transaksi atau pengeluaran untuk diexport.');
+					return;
+				}
+				try {
+					const DAY = 86400000;
+					const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+					const share = (a, b) => (b > 0 ? a / b : '');
+					const pctText = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}% dari total` : '');
+					const fmtRp = (n) => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
+					const excelDate = (ts) => {
+						const d = new Date(ts);
+						return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / DAY);
+					};
+					const timeText = (ts) => new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
+					const fmtDate = (ts) => new Date(ts).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+					const dayName = (ts) => new Date(ts).toLocaleDateString('id-ID', { weekday: 'long' });
+					const getDayKey = (ts) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+					const plusDays = (ts, n) => { const d = new Date(ts); d.setDate(d.getDate() + n); return d.getTime(); };
+					const asc = (a, b) => a.timestamp - b.timestamp;
+					const payLabel = (t) => (t.paymentMethod === 'qris' ? 'QRIS' : 'Tunai');
+					const hasRecipe = (p) => !!p && (p.recipe || []).length > 0;
+					const findProduct = (it) => products.find(p => p.name === it.name && p.price === it.price) || products.find(p => p.name === it.name);
+
+					const totalRevenue = sum(transactions, t => t.total);
+					const totalExpense = sum(expenseEntries, e => e.total);
+					const totalMargin = totalRevenue - totalExpense;
+					const totalItemsSold = sum(transactions, t => sum(t.items, i => i.qty));
+
+					// ---- sheet Harian / Mingguan / Bulanan ----
+					const buildPeriodRows = (getKey, labelFn, withGrowth) => {
+						const map = {};
+						const slot = (k) => (map[k] = map[k] || { trx: 0, items: 0, rev: 0, exp: 0 });
+						transactions.forEach(t => { const m = slot(getKey(t.timestamp)); m.trx += 1; m.items += sum(t.items, i => i.qty); m.rev += t.total; });
+						expenseEntries.forEach(e => { slot(getKey(e.timestamp)).exp += e.total; });
+						const keys = Object.keys(map).map(Number).sort((a, b) => a - b);
+						const rows = keys.map((k, idx) => {
+							const m = map[k];
+							const row = {
+								...labelFn(k),
+								'Jumlah Transaksi': m.trx,
+								'Item Terjual': m.items,
+								'Pendapatan (Rp)': m.rev,
+								'Pengeluaran (Rp)': m.exp,
+								'Margin (Rp)': m.rev - m.exp,
+								'Margin %': share(m.rev - m.exp, m.rev),
+							};
+							if (withGrowth) {
+								const prev = idx > 0 ? map[keys[idx - 1]].rev : 0;
+								row['Pertumbuhan Pendapatan %'] = prev > 0 ? (m.rev - prev) / prev : '';
+							}
+							return row;
+						});
+						if (rows.length) {
+							const T = { trx: 0, items: 0, rev: 0, exp: 0 };
+							keys.forEach(k => { T.trx += map[k].trx; T.items += map[k].items; T.rev += map[k].rev; T.exp += map[k].exp; });
+							const totalRow = {};
+							Object.keys(rows[0]).forEach(h => { totalRow[h] = ''; });
+							totalRow[Object.keys(rows[0])[0]] = 'TOTAL';
+							totalRow['Jumlah Transaksi'] = T.trx;
+							totalRow['Item Terjual'] = T.items;
+							totalRow['Pendapatan (Rp)'] = T.rev;
+							totalRow['Pengeluaran (Rp)'] = T.exp;
+							totalRow['Margin (Rp)'] = T.rev - T.exp;
+							totalRow['Margin %'] = share(T.rev - T.exp, T.rev);
+							rows.push(totalRow);
+						}
+						return rows;
+					};
+					const dailyRows = buildPeriodRows(getDayKey, k => ({ 'Tanggal': excelDate(k), 'Hari': dayName(k) }), false);
+					const weeklyRows = buildPeriodRows(getWeekKey, k => ({ 'Periode (Senin-Minggu)': `${fmtDate(k)} – ${fmtDate(plusDays(k, 6))}` }), true);
+					const monthlyRows = buildPeriodRows(getMonthKey, k => ({ 'Bulan': new Date(k).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) }), true);
+
+					// ---- sheet Per Menu ----
+					const menuMap = {};
+					const menuSlot = (name) => (menuMap[name] = menuMap[name] || { qty: 0, rev: 0, hpp: 0, revWithRecipe: 0 });
+					transactions.forEach(t => {
+						// diskon dibagi proporsional ke tiap item, supaya total per menu = total pendapatan
+						const ratio = t.subtotal > 0 ? t.total / t.subtotal : 1;
+						t.items.forEach(it => {
+							const m = menuSlot(it.name);
+							const lineNet = it.price * it.qty * ratio;
+							m.qty += it.qty;
+							m.rev += lineNet;
+							const p = findProduct(it);
+							if (hasRecipe(p)) { m.hpp += computeHPP(p.recipe, p.portionYield) * it.qty; m.revWithRecipe += lineNet; }
+						});
+					});
+					products.forEach(p => menuSlot(p.name));
+					const menuRows = Object.keys(menuMap).map(name => {
+						const m = menuMap[name];
+						const p = products.find(x => x.name === name);
+						const rec = hasRecipe(p);
+						const hpp = rec ? computeHPP(p.recipe, p.portionYield) : '';
+						return {
+							'Menu': name,
+							'Kategori': p ? p.category : '',
+							'Harga Jual (Rp)': p ? p.price : '',
+							'HPP/porsi (Rp)': hpp,
+							'Untung/porsi (Rp)': rec ? p.price - hpp : '',
+							'Margin per Porsi %': rec && p.price > 0 ? (p.price - hpp) / p.price : '',
+							'Terjual (pcs)': m.qty,
+							'Pendapatan (Rp)': m.rev,
+							'Kontribusi Pendapatan %': share(m.rev, totalRevenue),
+							'Total HPP (Rp)': m.revWithRecipe > 0 ? m.hpp : '',
+							'Laba Kotor Est. (Rp)': m.revWithRecipe > 0 ? m.revWithRecipe - m.hpp : '',
+							'Stok Saat Ini': p ? p.stock : '',
+						};
+					}).sort((a, b) => (b['Terjual (pcs)'] - a['Terjual (pcs)']) || (b['Pendapatan (Rp)'] - a['Pendapatan (Rp)']));
+					if (menuRows.length) {
+						const totalRow = {};
+						Object.keys(menuRows[0]).forEach(h => { totalRow[h] = ''; });
+						totalRow['Menu'] = 'TOTAL';
+						totalRow['Terjual (pcs)'] = sum(menuRows, r => r['Terjual (pcs)']);
+						totalRow['Pendapatan (Rp)'] = sum(menuRows, r => r['Pendapatan (Rp)']);
+						totalRow['Kontribusi Pendapatan %'] = share(totalRow['Pendapatan (Rp)'], totalRevenue);
+						totalRow['Total HPP (Rp)'] = sum(menuRows, r => (typeof r['Total HPP (Rp)'] === 'number' ? r['Total HPP (Rp)'] : 0));
+						totalRow['Laba Kotor Est. (Rp)'] = sum(menuRows, r => (typeof r['Laba Kotor Est. (Rp)'] === 'number' ? r['Laba Kotor Est. (Rp)'] : 0));
+						menuRows.push(totalRow);
+					}
+					const menuDataRows = menuRows.filter(r => r['Menu'] !== 'TOTAL');
+
+					// ---- sheet Per Jam ----
+					const hourMap = {};
+					transactions.forEach(t => {
+						const h = new Date(t.timestamp).getHours();
+						const m = (hourMap[h] = hourMap[h] || { trx: 0, items: 0, rev: 0 });
+						m.trx += 1; m.items += sum(t.items, i => i.qty); m.rev += t.total;
+					});
+					const hourRows = Object.keys(hourMap).map(Number).sort((a, b) => a - b).map(h => ({
+						'Jam': `${String(h).padStart(2, '0')}.00–${String((h + 1) % 24).padStart(2, '0')}.00`,
+						'Jumlah Transaksi': hourMap[h].trx,
+						'Item Terjual': hourMap[h].items,
+						'Pendapatan (Rp)': hourMap[h].rev,
+						'Rata-rata/Transaksi (Rp)': hourMap[h].rev / hourMap[h].trx,
+						'Porsi Transaksi %': hourMap[h].trx / transactions.length,
+					}));
+
+					// ---- sheet Transaksi & Detail Item ----
+					const sortedTrx = [...transactions].sort(asc);
+					const trxRows = sortedTrx.map(t => ({
+						'Tanggal': excelDate(t.timestamp),
+						'Jam': timeText(t.timestamp),
+						'No. Transaksi': t.id,
+						'Metode Bayar': payLabel(t),
+						'Item': t.items.map(i => `${i.name} x${i.qty}`).join(', '),
+						'Jumlah Item': sum(t.items, i => i.qty),
+						'Subtotal (Rp)': t.subtotal != null ? t.subtotal : t.total,
+						'Diskon %': (t.discountPercent || 0) / 100,
+						'Diskon (Rp)': t.discountAmount || 0,
+						'Total (Rp)': t.total,
+						'Tunai Diterima (Rp)': t.paymentMethod === 'qris' ? '' : t.cash,
+						'Kembalian (Rp)': t.paymentMethod === 'qris' ? '' : t.change,
+					}));
+					const lineRows = [];
+					sortedTrx.forEach(t => {
+						const ratio = t.subtotal > 0 ? t.total / t.subtotal : 1;
+						t.items.forEach(i => {
+							const p = findProduct(i);
+							lineRows.push({
+								'Tanggal': excelDate(t.timestamp),
+								'Jam': timeText(t.timestamp),
+								'No. Transaksi': t.id,
+								'Menu': i.name,
+								'Kategori': p ? p.category : '',
+								'Jumlah': i.qty,
+								'Harga Satuan (Rp)': i.price,
+								'Subtotal (Rp)': i.price * i.qty,
+								'Setelah Diskon (Rp)': i.price * i.qty * ratio,
+								'Metode Bayar': payLabel(t),
+							});
+						});
+					});
+
+					// ---- sheet Pengeluaran & Per Bahan ----
+					const expRows = [...expenseEntries].sort(asc).map(e => ({
+						'Tanggal': excelDate(e.timestamp),
+						'Jam': timeText(e.timestamp),
+						'Bahan': e.itemName,
+						'Satuan': e.unit || '',
+						'Jumlah': e.qty,
+						'Harga Satuan (Rp)': e.unitPrice,
+						'Total (Rp)': e.total,
+					}));
+					const bahanMap = {};
+					expenseEntries.forEach(e => {
+						const m = (bahanMap[e.itemName] = bahanMap[e.itemName] || { unit: e.unit || '', qty: 0, total: 0, n: 0 });
+						m.qty += e.qty; m.total += e.total; m.n += 1;
+					});
+					const bahanRows = Object.keys(bahanMap).map(name => ({
+						'Bahan': name,
+						'Satuan': bahanMap[name].unit,
+						'Total Jumlah': bahanMap[name].qty,
+						'Jumlah Pembelian (kali)': bahanMap[name].n,
+						'Total Biaya (Rp)': bahanMap[name].total,
+						'Rata-rata Harga Satuan (Rp)': bahanMap[name].qty > 0 ? bahanMap[name].total / bahanMap[name].qty : '',
+						'Porsi Pengeluaran %': share(bahanMap[name].total, totalExpense),
+					})).sort((a, b) => b['Total Biaya (Rp)'] - a['Total Biaya (Rp)']);
+					if (bahanRows.length) {
+						bahanRows.push({
+							'Bahan': 'TOTAL', 'Satuan': '', 'Total Jumlah': '', 'Jumlah Pembelian (kali)': sum(bahanRows, r => r['Jumlah Pembelian (kali)']),
+							'Total Biaya (Rp)': totalExpense, 'Rata-rata Harga Satuan (Rp)': '', 'Porsi Pengeluaran %': share(totalExpense, totalExpense),
+						});
+					}
+
+					// ---- sheet Ringkasan (dengan insight) ----
+					const allTs = [...transactions.map(t => t.timestamp), ...expenseEntries.map(e => e.timestamp)];
+					let firstTs = Infinity;
+					let lastTs = -Infinity;
+					allTs.forEach(ts => { if (ts < firstTs) firstTs = ts; if (ts > lastTs) lastTs = ts; });
+					const S = [];
+					const sec = (title) => { if (S.length) S.push({ l: '' }); S.push({ l: title }); };
+					const add = (l, v, f, n) => S.push({ l, v, f, n });
+					S.push({ l: `LAPORAN BISNIS — ${storeSettings.name || 'Toko Saya'}` });
+					add('Dibuat pada', new Date().toLocaleString('id-ID'));
+					add('Rentang data', `${fmtDate(firstTs)} – ${fmtDate(lastTs)}`);
+
+					sec('1. PENDAPATAN & MARGIN (SEMUA WAKTU)');
+					add('Total Pendapatan (Rp)', totalRevenue, '#,##0');
+					add('Total Pengeluaran Tercatat (Rp)', totalExpense, '#,##0', 'Dari tab Modal');
+					add('Margin = Pendapatan − Pengeluaran (Rp)', totalMargin, '#,##0');
+					add('Margin %', share(totalMargin, totalRevenue), '0.0%', 'Makin lengkap pencatatan pengeluaran, makin akurat angka ini');
+					add('Catatan membaca margin', 'Belanja dicatat saat dibeli, bukan saat dipakai', null, 'Belanja besar (mis. stok sebulan) bikin margin periode itu tampak kecil. Lihat tren Bulanan & laba kotor per menu. Minggu/bulan berjalan belum penuh, jadi pertumbuhannya belum final.');
+
+					sec('2. PERIODE BERJALAN');
+					[['Hari Ini', todaysRevenue, todaysExpenses], ['Minggu Ini', weekRevenue, weekExpenses], ['Bulan Ini', monthRevenue, monthExpenses]].forEach(([label, rev, exp]) => {
+						add(`Pendapatan ${label} (Rp)`, rev, '#,##0');
+						add(`Pengeluaran ${label} (Rp)`, exp, '#,##0');
+						add(`Margin ${label} (Rp)`, rev - exp, '#,##0');
+					});
+
+					sec('3. PENJUALAN');
+					const cashRev = sum(transactions.filter(t => t.paymentMethod !== 'qris'), t => t.total);
+					const qrisRev = totalRevenue - cashRev;
+					add('Jumlah Transaksi', transactions.length, '#,##0');
+					add('Total Item Terjual (pcs)', totalItemsSold, '#,##0');
+					add('Rata-rata Nilai per Transaksi (Rp)', transactions.length ? totalRevenue / transactions.length : 0, '#,##0');
+					add('Rata-rata Item per Transaksi', transactions.length ? totalItemsSold / transactions.length : 0, '0.0');
+					add('Total Diskon Diberikan (Rp)', sum(transactions, t => t.discountAmount || 0), '#,##0');
+					add('Pendapatan Tunai (Rp)', cashRev, '#,##0', pctText(cashRev, totalRevenue));
+					add('Pendapatan QRIS (Rp)', qrisRev, '#,##0', pctText(qrisRev, totalRevenue));
+
+					sec('4. HPP & LABA KOTOR (ESTIMASI DARI RESEP)');
+					const menuAgg = Object.keys(menuMap).map(k => menuMap[k]);
+					const revWithRecipe = sum(menuAgg, m => m.revWithRecipe);
+					const hppTotal = sum(menuAgg, m => m.hpp);
+					add('Menu yang sudah punya resep', `${products.filter(p => hasRecipe(p)).length} dari ${products.length} menu`);
+					add('Pendapatan dari menu beresep (Rp)', revWithRecipe, '#,##0', pctText(revWithRecipe, totalRevenue));
+					add('Total HPP menu terjual (Rp)', hppTotal, '#,##0', 'Resep × harga bahan terakhir (estimasi)');
+					add('Laba Kotor Estimasi (Rp)', revWithRecipe - hppTotal, '#,##0');
+					add('Margin Laba Kotor %', share(revWithRecipe - hppTotal, revWithRecipe), '0.0%');
+
+					sec('5. INSIGHT & SARAN');
+					const sold = menuDataRows.filter(r => r['Terjual (pcs)'] > 0);
+					if (sold.length) {
+						add('Menu terlaris', `${sold[0]['Menu']} (${sold[0]['Terjual (pcs)']} pcs)`);
+						const byRev = [...sold].sort((a, b) => b['Pendapatan (Rp)'] - a['Pendapatan (Rp)']);
+						add('Penyumbang pendapatan terbesar', `${byRev[0]['Menu']} — ${fmtRp(byRev[0]['Pendapatan (Rp)'])}`, null, pctText(byRev[0]['Pendapatan (Rp)'], totalRevenue));
+						add('Kontribusi 3 menu teratas', share(sum(byRev.slice(0, 3), r => r['Pendapatan (Rp)']), totalRevenue), '0.0%', 'Kalau terlalu tinggi, dorong menu lain lewat promo/bundling');
+					}
+					const unsold = menuDataRows.filter(r => r['Terjual (pcs)'] === 0).map(r => r['Menu']);
+					if (unsold.length) add('Menu belum laku sama sekali', unsold.slice(0, 8).join(', '), null, 'Pertimbangkan promo, ganti posisi, atau hapus dari menu');
+					if (hourRows.length) {
+						const bh = [...hourRows].sort((a, b) => b['Jumlah Transaksi'] - a['Jumlah Transaksi'])[0];
+						add('Jam tersibuk', bh['Jam'], null, `${bh['Jumlah Transaksi']} transaksi — pastikan stok & tenaga siap di jam ini`);
+					}
+					const dayRev = {};
+					transactions.forEach(t => { const k = getDayKey(t.timestamp); dayRev[k] = (dayRev[k] || 0) + t.total; });
+					const dayKeys = Object.keys(dayRev).map(Number);
+					if (dayKeys.length) {
+						const bestDay = dayKeys.sort((a, b) => dayRev[b] - dayRev[a])[0];
+						add('Tanggal dengan pendapatan tertinggi', `${dayName(bestDay)}, ${fmtDate(bestDay)}`, null, fmtRp(dayRev[bestDay]));
+						const wdSum = [0, 0, 0, 0, 0, 0, 0];
+						const wdCnt = [0, 0, 0, 0, 0, 0, 0];
+						dayKeys.forEach(k => { const wd = new Date(k).getDay(); wdSum[wd] += dayRev[k]; wdCnt[wd] += 1; });
+						let bestWd = -1; let bestAvg = -1;
+						for (let wd = 0; wd < 7; wd++) { if (wdCnt[wd] > 0 && wdSum[wd] / wdCnt[wd] > bestAvg) { bestAvg = wdSum[wd] / wdCnt[wd]; bestWd = wd; } }
+						if (bestWd >= 0) add('Hari paling ramai (rata-rata)', ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][bestWd], null, `Rata-rata ${fmtRp(bestAvg)} per hari`);
+					}
+					if (bahanRows.length > 1) {
+						add('Pengeluaran terbesar', `${bahanRows[0]['Bahan']} — ${fmtRp(bahanRows[0]['Total Biaya (Rp)'])}`, null, pctText(bahanRows[0]['Total Biaya (Rp)'], totalExpense) + ' — cek supplier/harga alternatif');
+					}
+					const withMargin = menuDataRows.filter(r => typeof r['Margin per Porsi %'] === 'number');
+					if (withMargin.length) {
+						const hi = [...withMargin].sort((a, b) => b['Margin per Porsi %'] - a['Margin per Porsi %'])[0];
+						const lo = [...withMargin].sort((a, b) => a['Margin per Porsi %'] - b['Margin per Porsi %'])[0];
+						add('Menu margin per porsi tertinggi', hi['Menu'], null, `${Math.round(hi['Margin per Porsi %'] * 100)}% — layak didorong/dipromosikan`);
+						add('Menu margin per porsi terendah', lo['Menu'], null, `${Math.round(lo['Margin per Porsi %'] * 100)}% — tinjau harga jual atau takaran`);
+						const losing = withMargin.filter(r => r['Untung/porsi (Rp)'] < 0).map(r => r['Menu']);
+						if (losing.length) add('PERHATIAN: menu rugi per porsi', losing.join(', '), null, 'HPP lebih besar dari harga jual — naikkan harga atau cek resep');
+					}
+					const noRecipe = products.filter(p => !hasRecipe(p)).length;
+					if (noRecipe > 0) add('Menu belum punya resep', `${noRecipe} menu`, null, 'Isi resep di tab Produk supaya HPP & laba per menu terhitung');
+					const lowStock = products.filter(p => p.stock < 5).map(p => `${p.name} (${p.stock})`);
+					if (lowStock.length) add('Stok menipis (< 5)', lowStock.slice(0, 8).join(', '), null, 'Segera restock');
+					if (totalRevenue > 0 && totalMargin / totalRevenue < 0.3) add('PERHATIAN: margin di bawah 30%', `${Math.round((totalMargin / totalRevenue) * 100)}%`, null, 'Tinjau harga jual atau biaya bahan terbesar');
+
+					// ---- rakit workbook ----
+					const finishSheet = (ws, filter) => {
+						if (!ws['!ref']) return ws;
+						const range = XLSX.utils.decode_range(ws['!ref']);
+						const headers = [];
+						for (let c = range.s.c; c <= range.e.c; c++) {
+							const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+							headers.push(cell ? String(cell.v) : '');
+						}
+						const widths = headers.map(h => h.length + 2);
+						for (let r = range.s.r + 1; r <= range.e.r; r++) {
+							for (let c = range.s.c; c <= range.e.c; c++) {
+								const cell = ws[XLSX.utils.encode_cell({ r, c })];
+								if (!cell) continue;
+								const idx = c - range.s.c;
+								const h = headers[idx];
+								if (cell.t === 'n') {
+									if (h.indexOf('(Rp)') !== -1) cell.z = '#,##0';
+									else if (h.indexOf('%') !== -1) cell.z = '0.0%';
+									else if (h === 'Tanggal') cell.z = 'dd/mm/yyyy';
+									widths[idx] = Math.max(widths[idx], 14);
+								} else {
+									widths[idx] = Math.max(widths[idx], String(cell.v).length + 2);
+								}
+							}
+						}
+						ws['!cols'] = widths.map(w => ({ wch: Math.min(Math.max(w, 10), 60) }));
+						if (filter) ws['!autofilter'] = { ref: ws['!ref'] };
+						return ws;
+					};
+
+					const wb = XLSX.utils.book_new();
+					const wsSummary = XLSX.utils.aoa_to_sheet(S.map(r => [r.l, r.v === undefined ? '' : r.v, r.n || '']));
+					S.forEach((r, i) => {
+						if (typeof r.v === 'number' && r.f) {
+							const cell = wsSummary[XLSX.utils.encode_cell({ r: i, c: 1 })];
+							if (cell) cell.z = r.f;
+						}
+					});
+					wsSummary['!cols'] = [{ wch: 46 }, { wch: 36 }, { wch: 72 }];
+					XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan');
+					const addSheet = (name, rows, filter) => {
+						if (!rows.length) return;
+						XLSX.utils.book_append_sheet(wb, finishSheet(XLSX.utils.json_to_sheet(rows), filter), name);
+					};
+					addSheet('Harian', dailyRows, false);
+					addSheet('Mingguan', weeklyRows, false);
+					addSheet('Bulanan', monthlyRows, false);
+					addSheet('Per Menu', menuRows, false);
+					addSheet('Per Jam', hourRows, false);
+					addSheet('Transaksi', trxRows, true);
+					addSheet('Detail Item', lineRows, true);
+					addSheet('Pengeluaran', expRows, true);
+					addSheet('Per Bahan', bahanRows, false);
+
+					const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+					const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+					const url = URL.createObjectURL(blob);
+					const slug = (storeSettings.name || 'kasir').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'kasir';
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = `laporan-${slug}-${new Date().toLocaleDateString('sv-SE')}.xlsx`;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+					setTimeout(() => URL.revokeObjectURL(url), 1000);
+				} catch (err) {
+					window.alert('Gagal membuat file Excel: ' + (err && err.message ? err.message : 'tidak diketahui'));
+				}
+			};
+
+			const importAllData = (e) => {
+				const file = e.target.files && e.target.files[0];
+				if (!file) return;
+				const reader = new FileReader();
+				reader.onload = async () => {
+					try {
+						const data = JSON.parse(reader.result);
+						if (data.app !== 'warung-kasir-backup') throw new Error('bukan file backup yang valid');
+						const ok = window.confirm('Import akan MENIMPA semua data saat ini (produk, transaksi, pengeluaran, pengaturan toko) dengan isi file backup. Lanjutkan?');
+						if (!ok) return;
+						if (data.products) await saveProducts(data.products);
+						if (data.transactions) await saveTransactions(data.transactions);
+						if (data.storeSettings) await saveStoreSettings(data.storeSettings);
+						if (data.expenseItems) await saveExpenseItems(data.expenseItems);
+						if (data.expenseEntries) await saveExpenseEntries(data.expenseEntries);
+						window.alert('Import berhasil.');
+					} catch (err) {
+						window.alert('Gagal import: file tidak valid.');
+					}
+				};
+				reader.readAsText(file);
+				e.target.value = '';
+			};
+
+			const saveTransactions = async (next) => {
+				setTransactions(next);
+				try {
+					const res = await window.storage.set('transactions', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const deleteTransaction = async (trx) => {
+				const ok = window.confirm(`Hapus transaksi #${trx.id}? Stok barang di transaksi ini akan dikembalikan.`);
+				if (!ok) return;
+				await saveTransactions(transactions.filter(t => t.id !== trx.id));
+				// kembalikan stok produk yang namanya cocok dengan item di transaksi ini
+				const nextProducts = products.map(p => {
+					const sold = trx.items.find(it => it.name === p.name);
+					return sold ? { ...p, stock: p.stock + sold.qty } : p;
+				});
+				await saveProducts(nextProducts);
+				setExpandedTrx(null);
+			};
+
+			// ---- kasir logic ----
+			const categories = useMemo(() => {
+				const set = new Set(products.map(p => p.category).filter(Boolean));
+				return ['Semua', ...Array.from(set)];
+			}, [products]);
+
+			const filteredProducts = useMemo(() => {
+				return products.filter(p => {
+					const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
+					const matchesCategory = activeCategory === 'Semua' || p.category === activeCategory;
+					return matchesSearch && matchesCategory;
+				});
+			}, [products, search, activeCategory]);
+
+			const groupedProducts = useMemo(() => {
+				const groups = {};
+				filteredProducts.forEach(p => {
+					const cat = p.category || 'Lainnya';
+					if (!groups[cat]) groups[cat] = [];
+					groups[cat].push(p);
+				});
+				// urutkan grup sesuai urutan kategori yang sudah ada, bukan acak
+				return categories.filter(c => c !== 'Semua' && groups[c]).map(cat => ({ category: cat, items: groups[cat] }));
+			}, [filteredProducts, categories]);
+
+			const addToCart = (product) => {
+				setCart(prev => {
+					const existing = prev.find(c => c.productId === product.id);
+					if (existing) {
+						if (existing.qty >= product.stock) return prev;
+						return prev.map(c => c.productId === product.id ? { ...c, qty: c.qty + 1 } : c);
+					}
+					if (product.stock <= 0) return prev;
+					return [...prev, { productId: product.id, name: product.name, price: product.price, qty: 1, stock: product.stock }];
+				});
+			};
+
+			const changeQty = (productId, delta) => {
+				setCart(prev => prev.map(c => {
+					if (c.productId !== productId) return c;
+					const newQty = c.qty + delta;
+					if (newQty < 1) return c;
+					if (newQty > c.stock) return c;
+					return { ...c, qty: newQty };
+				}));
+			};
+
+			const removeFromCart = (productId) => {
+				setCart(prev => prev.filter(c => c.productId !== productId));
+			};
+
+			const cartTotal = useMemo(() => cart.reduce((sum, c) => sum + c.price * c.qty, 0), [cart]);
+			const discountPercent = Math.min(100, Math.max(0, parseFloat(discountInput) || 0));
+			const discountAmount = cartTotal * (discountPercent / 100);
+			const finalTotal = cartTotal - discountAmount;
+			const cashValue = parseFloat(cashInput) || 0;
+			const change = cashValue - finalTotal;
+			const canCheckout = cart.length > 0 && (paymentMethod === 'qris' || cashValue >= finalTotal);
+
+			const saveHeldCarts = async (next) => {
+				setHeldCarts(next);
+				try {
+					const res = await window.storage.set('held-carts', JSON.stringify(next));
+					if (!res) setSaveError(true);
+				} catch (e) { setSaveError(true); }
+			};
+
+			const holdCurrentCart = async () => {
+				if (cart.length === 0) return;
+				const held = { id: uid(), timestamp: Date.now(), cart, discountInput, paymentMethod };
+				await saveHeldCarts([held, ...heldCarts]);
+				setCart([]);
+				setDiscountInput('');
+				setCashInput('');
+				setPaymentMethod('tunai');
+			};
+
+			const resumeHeldCart = async (held) => {
+				if (cart.length > 0) {
+					const ok = window.confirm('Keranjang aktif saat ini akan diganti dengan transaksi tertahan ini. Lanjutkan?');
+					if (!ok) return;
+				}
+				setCart(held.cart);
+				setDiscountInput(held.discountInput || '');
+				setPaymentMethod(held.paymentMethod || 'tunai');
+				await saveHeldCarts(heldCarts.filter(h => h.id !== held.id));
+				setShowHeldList(false);
+			};
+
+			const deleteHeldCart = async (id) => {
+				await saveHeldCarts(heldCarts.filter(h => h.id !== id));
+			};
+
+			const checkout = async () => {
+				if (!canCheckout) return;
+				const trx = {
+					id: uid().toUpperCase(),
+					timestamp: Date.now(),
+					items: cart.map(c => ({ name: c.name, price: c.price, qty: c.qty })),
+					subtotal: cartTotal,
+					discountPercent: discountPercent,
+					discountAmount: discountAmount,
+					total: finalTotal,
+					paymentMethod: paymentMethod,
+					cash: paymentMethod === 'qris' ? finalTotal : cashValue,
+					change: paymentMethod === 'qris' ? 0 : change,
+				};
+				const nextTransactions = [trx, ...transactions];
+				const nextProducts = products.map(p => {
+					const inCart = cart.find(c => c.productId === p.id);
+					if (!inCart) return p;
+					return { ...p, stock: Math.max(0, p.stock - inCart.qty) };
+				});
+				await saveTransactions(nextTransactions);
+				await saveProducts(nextProducts);
+				setLastTransaction(trx);
+				setCart([]);
+				setCashInput('');
+				setDiscountInput('');
+				setPaymentMethod('tunai');
+				setShowReceipt(true);
+			};
+
+			// ---- produk logic ----
+			const openNewProduct = () => {
+				setPForm({ name: '', price: '', stock: '', category: '', recipe: [], portionYield: '1', targetMargin: '60' });
+				setProductModal('new');
+			};
+			const openEditProduct = (p) => {
+				setPForm({
+					name: p.name, price: String(p.price), stock: String(p.stock), category: p.category || '',
+					recipe: (p.recipe || []).map(r => ({ expenseItemId: r.expenseItemId, qty: String(r.qty) })),
+					portionYield: String(p.portionYield || 1),
+					targetMargin: String(p.targetMargin || '60'),
+				});
+				setProductModal(p);
+			};
+			const closeProductModal = () => setProductModal(null);
+
+			// resep: tiap baris = 1 bahan modal + jumlah yang dipakai
+			const addRecipeRow = () => setPForm(f => ({ ...f, recipe: [...(f.recipe || []), { expenseItemId: expenseItems[0] ? expenseItems[0].id : '', qty: '' }] }));
+			const updateRecipeRow = (idx, patch) => setPForm(f => ({ ...f, recipe: f.recipe.map((r, i) => i === idx ? { ...r, ...patch } : r) }));
+			const removeRecipeRow = (idx) => setPForm(f => ({ ...f, recipe: f.recipe.filter((_, i) => i !== idx) }));
+
+			const computeBatchCost = (recipe) => (recipe || []).reduce((sum, r) => {
+				const item = expenseItems.find(it => it.id === r.expenseItemId);
+				if (!item) return sum;
+				const unitPrice = item.price / (item.qtyBeli || 1);
+				return sum + (unitPrice * (parseFloat(r.qty) || 0));
+			}, 0);
+
+			const computeHPP = (recipe, portionYield = 1) => {
+				const batchCost = computeBatchCost(recipe);
+				const y = Math.max(0.0001, parseFloat(portionYield) || 1);
+				return batchCost / y;
+			};
+
+			const submitProduct = async () => {
+				if (!pForm.name.trim() || pForm.price === '' || pForm.stock === '') return;
+				const payload = {
+					name: pForm.name.trim(),
+					price: Math.max(0, parseFloat(pForm.price) || 0),
+					stock: Math.max(0, parseInt(pForm.stock) || 0),
+					category: pForm.category.trim() || 'Lainnya',
+					portionYield: Math.max(1, parseFloat(pForm.portionYield) || 1),
+					targetMargin: Math.min(99, Math.max(1, parseFloat(pForm.targetMargin) || 60)),
+					recipe: (pForm.recipe || [])
+						.filter(r => r.expenseItemId && (parseFloat(r.qty) || 0) > 0)
+						.map(r => ({ expenseItemId: r.expenseItemId, qty: parseFloat(r.qty) })),
+				};
+				if (productModal === 'new') {
+					await saveProducts([...products, { id: uid(), ...payload }]);
+				} else {
+					await saveProducts(products.map(p => p.id === productModal.id ? { ...p, ...payload } : p));
+				}
+				closeProductModal();
+			};
+
+			const deleteProduct = async (id) => {
+				await saveProducts(products.filter(p => p.id !== id));
+			};
+
+			// ---- riwayat logic ----
+			const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+			const weekStart = new Date();
+			const dayNum = weekStart.getDay();
+			weekStart.setDate(weekStart.getDate() - (dayNum === 0 ? 6 : dayNum - 1));
+			weekStart.setHours(0, 0, 0, 0);
+			const todaysTransactions = transactions.filter(t => t.timestamp >= todayStart.getTime());
+			const todaysRevenue = todaysTransactions.reduce((s, t) => s + t.total, 0);
+
+			const itemSalesSummary = useMemo(() => {
+				const map = {};
+				transactions.forEach(t => {
+					const isToday = t.timestamp >= todayStart.getTime();
+					const isThisWeek = t.timestamp >= weekStart.getTime();
+					t.items.forEach(it => {
+						if (!map[it.name]) map[it.name] = { name: it.name, today: 0, thisWeek: 0 };
+						if (isThisWeek) map[it.name].thisWeek += it.qty;
+						if (isToday) map[it.name].today += it.qty;
+					});
+				});
+				return Object.values(map).sort((a, b) => b.thisWeek - a.thisWeek);
+			}, [transactions]);
+
+			const topSellingAllTime = useMemo(() => {
+				const map = {};
+				transactions.forEach(t => t.items.forEach(it => { map[it.name] = (map[it.name] || 0) + it.qty; }));
+				const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
+				return sorted.length ? { name: sorted[0][0], qty: sorted[0][1] } : null;
+			}, [transactions]);
+
+			const busiestHour = useMemo(() => {
+				if (transactions.length === 0) return null;
+				const counts = {};
+				transactions.forEach(t => {
+					const h = new Date(t.timestamp).getHours();
+					counts[h] = (counts[h] || 0) + 1;
+				});
+				const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+				const hour = Number(sorted[0][0]);
+				return { range: `${String(hour).padStart(2, '0')}.00–${String((hour + 1) % 24).padStart(2, '0')}.00`, count: sorted[0][1] };
+			}, [transactions]);
+
+			const transactionsByDate = useMemo(() => {
+				const groups = [];
+				let current = null;
+				transactions.forEach(t => {
+					const d = new Date(t.timestamp);
+					const dateKey = d.toDateString();
+					if (!current || current.dateKey !== dateKey) {
+						const label = d.toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+						current = { dateKey, label, items: [], total: 0, itemMap: {} };
+						groups.push(current);
+					}
+					current.items.push(t);
+					current.total += t.total;
+					t.items.forEach(it => {
+						if (!current.itemMap[it.name]) current.itemMap[it.name] = { name: it.name, qty: 0, total: 0 };
+						current.itemMap[it.name].qty += it.qty;
+						current.itemMap[it.name].total += it.price * it.qty;
+					});
+				});
+				return groups.map(g => ({ ...g, itemBreakdown: Object.values(g.itemMap).sort((a, b) => b.qty - a.qty) }));
+			}, [transactions]);
+
+			// ---- modal/pengeluaran logic ----
+			const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+			const todaysExpenses = expenseEntries.filter(e => e.timestamp >= todayStart.getTime()).reduce((s, e) => s + e.total, 0);
+			const weekExpenses = expenseEntries.filter(e => e.timestamp >= weekStart.getTime()).reduce((s, e) => s + e.total, 0);
+			const monthExpenses = expenseEntries.filter(e => e.timestamp >= monthStart.getTime()).reduce((s, e) => s + e.total, 0);
+			const allTimeExpenses = expenseEntries.reduce((s, e) => s + e.total, 0);
+
+			const weekRevenue = transactions.filter(t => t.timestamp >= weekStart.getTime()).reduce((s, t) => s + t.total, 0);
+			const monthRevenue = transactions.filter(t => t.timestamp >= monthStart.getTime()).reduce((s, t) => s + t.total, 0);
+
+			const expenseAnalytics = useMemo(() => {
+				const getKey = analyticsGrouping === 'month' ? getMonthKey : getWeekKey;
+				const buckets = {};
+				expenseEntries.forEach(e => {
+					if (expenseFilterItem !== 'all' && e.itemName !== expenseFilterItem) return;
+					const k = getKey(e.timestamp);
+					buckets[k] = (buckets[k] || 0) + e.total;
+				});
+				return Object.entries(buckets)
+					.map(([k, v]) => ({ key: Number(k), label: formatBucketLabel(Number(k), analyticsGrouping), value: v }))
+					.sort((a, b) => a.key - b.key)
+					.slice(-10);
+			}, [expenseEntries, analyticsGrouping, expenseFilterItem]);
+
+			const marginAnalytics = useMemo(() => {
+				const getKey = analyticsGrouping === 'month' ? getMonthKey : getWeekKey;
+				const revBuckets = {}, expBuckets = {};
+				transactions.forEach(t => { const k = getKey(t.timestamp); revBuckets[k] = (revBuckets[k] || 0) + t.total; });
+				expenseEntries.forEach(e => { const k = getKey(e.timestamp); expBuckets[k] = (expBuckets[k] || 0) + e.total; });
+				const keys = Array.from(new Set([...Object.keys(revBuckets), ...Object.keys(expBuckets)].map(Number))).sort((a, b) => a - b).slice(-10);
+				return keys.map(k => ({
+					key: k, label: formatBucketLabel(k, analyticsGrouping),
+					revenue: revBuckets[k] || 0, expense: expBuckets[k] || 0, value: (revBuckets[k] || 0) - (expBuckets[k] || 0),
+				}));
+			}, [transactions, expenseEntries, analyticsGrouping]);
+
+			const expenseByPeriod = { today: todaysExpenses, week: weekExpenses, month: monthExpenses };
+			const marginByPeriod = {
+				today: todaysRevenue - todaysExpenses,
+				week: weekRevenue - weekExpenses,
+				month: monthRevenue - monthExpenses,
+			};
+			const periodLabel = { today: 'Hari Ini', week: 'Minggu Ini', month: 'Bulan Ini' };
+
+			const expensesByDate = useMemo(() => {
+				const groups = [];
+				let current = null;
+				expenseEntries.forEach(e => {
+					const d = new Date(e.timestamp);
+					const dateKey = d.toDateString();
+					if (!current || current.dateKey !== dateKey) {
+						const label = d.toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+						current = { dateKey, label, entries: [], total: 0 };
+						groups.push(current);
+					}
+					current.entries.push(e);
+					current.total += e.total;
+				});
+				return groups;
+			}, [expenseEntries]);
+
+			const printReceipt = () => {
+				window.print();
+			};
+
+			const generateReceiptImage = (trx, settings) => new Promise((resolve) => {
+				const width = 380;
+				const padding = 24;
+				const estHeight = padding * 2 + 150 + trx.items.length * 34 + 160 + (settings.logo ? 70 : 0);
+				const canvas = document.createElement('canvas');
+				canvas.width = width;
+				canvas.height = estHeight;
+				const ctx = canvas.getContext('2d');
+				ctx.fillStyle = '#ffffff';
+				ctx.fillRect(0, 0, width, estHeight);
+				ctx.fillStyle = '#20261F';
+
+				const dashedLine = (y) => {
+					ctx.strokeStyle = '#D6CFBE';
+					ctx.beginPath(); ctx.setLineDash([3, 3]);
+					ctx.moveTo(padding, y); ctx.lineTo(width - padding, y); ctx.stroke();
+					ctx.setLineDash([]);
+				};
+
+				const drawBody = (startY) => {
+					let y = startY;
+					ctx.textAlign = 'center';
+					ctx.font = '700 18px monospace';
+					ctx.fillStyle = '#20261F';
+					ctx.fillText(settings.name || 'Toko Saya', width / 2, y);
+					y += 20;
+					ctx.font = '12px monospace';
+					ctx.fillStyle = '#6B7268';
+					ctx.fillText(formatDateTime(trx.timestamp), width / 2, y);
+					y += 16;
+					ctx.fillText('No. #' + trx.id, width / 2, y);
+					y += 14;
+					dashedLine(y);
+					y += 20;
+					trx.items.forEach(it => {
+						ctx.textAlign = 'left'; ctx.font = '13px monospace'; ctx.fillStyle = '#20261F';
+						ctx.fillText(it.name, padding, y);
+						ctx.textAlign = 'right';
+						ctx.fillText(formatRupiah(it.price * it.qty), width - padding, y);
+						y += 15;
+						ctx.textAlign = 'left'; ctx.font = '11px monospace'; ctx.fillStyle = '#6B7268';
+						ctx.fillText(`${it.qty} x ${formatRupiah(it.price)}`, padding, y);
+						y += 19;
+					});
+					dashedLine(y);
+					y += 22;
+					ctx.textAlign = 'left'; ctx.font = '700 14px monospace'; ctx.fillStyle = '#20261F';
+					ctx.fillText('Total', padding, y);
+					ctx.textAlign = 'right';
+					ctx.fillText(formatRupiah(trx.total), width - padding, y);
+					y += 20;
+					ctx.font = '12px monospace'; ctx.fillStyle = '#6B7268';
+					ctx.textAlign = 'left'; ctx.fillText('Tunai', padding, y);
+					ctx.textAlign = 'right'; ctx.fillText(formatRupiah(trx.cash), width - padding, y);
+					y += 16;
+					ctx.textAlign = 'left'; ctx.fillText('Kembali', padding, y);
+					ctx.textAlign = 'right'; ctx.fillText(formatRupiah(trx.change), width - padding, y);
+					y += 26;
+					ctx.textAlign = 'center'; ctx.font = '11px monospace';
+					ctx.fillText('Terima kasih atas kunjungan Anda', width / 2, y);
+					resolve(canvas.toDataURL('image/png'));
+				};
+
+				if (settings.logo) {
+					const img = new Image();
+					img.onload = () => {
+						const s = 56;
+						ctx.drawImage(img, width / 2 - s / 2, padding, s, s);
+						drawBody(padding + s + 22);
+					};
+					img.onerror = () => drawBody(padding + 10);
+					img.src = settings.logo;
+				} else {
+					drawBody(padding + 10);
+				}
+			});
+
+			const shareOrSaveReceipt = async () => {
+				if (!lastTransaction) return;
+				const dataUrl = await generateReceiptImage(lastTransaction, storeSettings);
+				try {
+					const blob = await (await fetch(dataUrl)).blob();
+					const file = new File([blob], `struk-${lastTransaction.id}.png`, { type: 'image/png' });
+					if (navigator.canShare && navigator.canShare({ files: [file] })) {
+						await navigator.share({ files: [file], title: 'Struk Transaksi' });
+						return;
+					}
+				} catch (e) { /* fall back to download below */ }
+				const a = document.createElement('a');
+				a.href = dataUrl;
+				a.download = `struk-${lastTransaction.id}.png`;
+				a.click();
+			};
+
+			const [btPrinting, setBtPrinting] = useState(false);
+
+			const buildEscPosText = (trx, settings) => {
+				const lines = [];
+				const divider = '--------------------------------\n';
+				lines.push('\x1B\x40'); // reset printer
+				lines.push('\x1B\x61\x01'); // center align
+				if (settings.name) lines.push(settings.name + '\n');
+				lines.push(formatDateTime(trx.timestamp) + '\n');
+				lines.push('No. #' + trx.id + '\n');
+				lines.push(divider);
+				lines.push('\x1B\x61\x00'); // left align
+				trx.items.forEach(it => {
+					lines.push(it.name + '\n');
+					const left = `  ${it.qty} x ${formatRupiah(it.price)}`;
+					const right = formatRupiah(it.price * it.qty);
+					const pad = Math.max(1, 32 - left.length - right.length);
+					lines.push(left + ' '.repeat(pad) + right + '\n');
+				});
+				lines.push(divider);
+				lines.push(`Total: ${formatRupiah(trx.total)}\n`);
+				if (trx.paymentMethod === 'qris') {
+					lines.push('Bayar via QRIS\n');
+				} else {
+					lines.push(`Tunai: ${formatRupiah(trx.cash)}\n`);
+					lines.push(`Kembali: ${formatRupiah(trx.change)}\n`);
+				}
+				lines.push('\x1B\x61\x01');
+				lines.push('\nTerima kasih\n\n\n\n');
+				lines.push('\x1D\x56\x42\x00'); // potong kertas (jika didukung printer)
+				return lines.join('');
+			};
+
+			const printViaBluetooth = async () => {
+				if (!lastTransaction) return;
+				if (!navigator.bluetooth) {
+					window.alert('Browser/perangkat ini tidak mendukung Bluetooth Web API. Fitur ini hanya berjalan di Chrome Android (tidak didukung di iPhone/Safari).');
+					return;
+				}
+				setBtPrinting(true);
+				try {
+					const device = await navigator.bluetooth.requestDevice({
+						acceptAllDevices: true,
+						optionalServices: [
+							'000018f0-0000-1000-8000-00805f9b34fb',
+							'0000ff00-0000-1000-8000-00805f9b34fb',
+							'0000ffe0-0000-1000-8000-00805f9b34fb',
+							'49535343-fe7d-4ae5-8fa9-9fafd205e455',
+						],
+					});
+					const server = await device.gatt.connect();
+					const services = await server.getPrimaryServices();
+					let writableChar = null;
+					for (const service of services) {
+						const chars = await service.getCharacteristics();
+						writableChar = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+						if (writableChar) break;
+					}
+					if (!writableChar) throw new Error('Tidak ditemukan jalur tulis ke printer. Printer ini mungkin tidak kompatibel.');
+					const text = buildEscPosText(lastTransaction, storeSettings);
+					const bytes = new TextEncoder().encode(text);
+					const chunkSize = 100;
+					for (let i = 0; i < bytes.length; i += chunkSize) {
+						await writableChar.writeValue(bytes.slice(i, i + chunkSize));
+					}
+				} catch (err) {
+					window.alert('Gagal mencetak via Bluetooth: ' + (err && err.message ? err.message : 'tidak diketahui') + '. Pastikan printer menyala dan dalam jangkauan.');
+				} finally {
+					setBtPrinting(false);
+				}
+			};
+
+			const formatDateTime = (ts) => {
+				const d = new Date(ts);
+				return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) +
+					' · ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+			};
+
+			if (!ready) {
+				return (
+					<div className="kasir-app" style={{ alignItems: 'center', justifyContent: 'center' }}>
+						<style>{STYLE}</style>
+						<p style={{ color: '#6B7268', fontFamily: 'IBM Plex Sans, sans-serif' }}>Memuat data...</p>
+					</div>
+				);
+			}
+
+			return (
+				<div className="kasir-app">
+					<style>{STYLE}</style>
+
+					<div className="ka-sidebar">
+						<div className="ka-sidebar-mark">RK</div>
+						<button className={`ka-tab ${activeTab === 'kasir' ? 'active' : ''}`} onClick={() => setActiveTab('kasir')}>
+							<Ico size={19}>🛒</Ico> Kasir
+						</button>
+						<button className={`ka-tab ${activeTab === 'produk' ? 'active' : ''}`} onClick={() => setActiveTab('produk')}>
+							<Ico size={19}>📦</Ico> Produk
+						</button>
+						<button className={`ka-tab ${activeTab === 'riwayat' ? 'active' : ''}`} onClick={() => setActiveTab('riwayat')}>
+							<Ico size={19}>🕘</Ico> Riwayat
+						</button>
+						<div className="ka-sidebar-divider" />
+						<button className={`ka-tab ${activeTab === 'modal' ? 'active' : ''}`} onClick={() => setActiveTab('modal')}>
+							<Ico size={19}>📉</Ico> Modal
+						</button>
+						<button className="ka-tab" style={{ marginTop: 'auto' }} onClick={() => { setSettingsForm(storeSettings); setShowSettings(true); }}>
+							<Ico size={19}>⚙️</Ico> Toko
+						</button>
+					</div>
+
+					<div className="ka-main">
+						<div className="ka-topbar">
+							<h1>
+								{activeTab === 'kasir' && 'Kasir'}
+								{activeTab === 'produk' && 'Produk'}
+								{activeTab === 'riwayat' && 'Riwayat Transaksi'}
+								{activeTab === 'modal' && 'Modal & Pengeluaran'}
+							</h1>
+							<p>
+								{activeTab === 'kasir' && 'Pilih produk untuk menambahkan ke keranjang'}
+								{activeTab === 'produk' && 'Kelola daftar produk dan stok barang'}
+								{activeTab === 'riwayat' && 'Rekap penjualan dan riwayat transaksi'}
+								{activeTab === 'modal' && 'Catat & pantau pengeluaran bahan baku dan operasional toko'}
+							</p>
+						</div>
+
+						<div className="ka-body">
+							{saveError && (
+								<div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F5E1DD', color: '#A23B2E', padding: '10px 14px', borderRadius: 8, fontSize: 12.5, marginBottom: 16 }}>
+									<Ico size={15}>⚠️</Ico> Sebagian data mungkin tidak tersimpan. Coba periksa koneksi penyimpanan Anda.
+								</div>
+							)}
+
+							{activeTab === 'kasir' && (
+								<div className="ka-kasir-grid">
+									<div>
+										<div className="ka-search-row">
+											<div className="ka-search-box">
+												<Ico size={15}>🔍</Ico>
+												<input placeholder="Cari produk..." value={search} onChange={e => setSearch(e.target.value)} />
+											</div>
+										</div>
+										<div className="ka-chips">
+											{categories.map(cat => (
+												<button key={cat} className={`ka-chip ${activeCategory === cat ? 'active' : ''}`} onClick={() => setActiveCategory(cat)}>
+													{cat}
+												</button>
+											))}
+										</div>
+
+										{filteredProducts.length === 0 ? (
+											<div className="ka-empty-state">
+												<Ico size={34}>📦</Ico>
+												<p>{products.length === 0 ? 'Belum ada produk. Tambah produk dulu di tab Produk.' : 'Tidak ada produk yang cocok dengan pencarian.'}</p>
+											</div>
+										) : (
+											groupedProducts.map(group => (
+												<div key={group.category} className="ka-category-group">
+													<h3 className="ka-category-title">{group.category}</h3>
+													<div className="ka-product-grid">
+														{group.items.map(p => {
+															const inCart = cart.find(c => c.productId === p.id);
+															const availableStock = p.stock - (inCart ? inCart.qty : 0);
+															return (
+																<button key={p.id} className="ka-product-card" disabled={availableStock <= 0} onClick={() => addToCart(p)}>
+																	<span className={`ka-stock-badge ${p.stock === 0 ? 'out' : p.stock < 5 ? 'low' : ''}`}>
+																		{p.stock === 0 ? 'Habis' : `Stok ${p.stock}`}
+																	</span>
+																	<span className="name">{p.name}</span>
+																	<span className="price mono">{formatRupiah(p.price)}</span>
+																</button>
+															);
+														})}
+													</div>
+												</div>
+											))
+										)}
+									</div>
+
+									<div className="ka-cart">
+										<div className="ka-cart-header-row">
+											<h2><Ico size={17}>🛒</Ico> Keranjang</h2>
+											{heldCarts.length > 0 && (
+												<button className="ka-held-badge" onClick={() => setShowHeldList(true)}>🅿️ Tertahan ({heldCarts.length})</button>
+											)}
+										</div>
+										{cart.length > 0 && (
+											<button className="ka-btn secondary" style={{ width: '100%', marginBottom: 12 }} onClick={holdCurrentCart}>
+												🅿️ Tahan Transaksi Ini
+											</button>
+										)}
+										{cart.length === 0 ? (
+											<div className="empty">Keranjang masih kosong.<br />Pilih produk di sebelah kiri untuk memulai transaksi.</div>
+										) : (
+											<>
+												<div className="ka-cart-items">
+													{cart.map(c => (
+														<div className="ka-cart-item" key={c.productId}>
+															<div className="info">
+																<div className="n">{c.name}</div>
+																<div className="p">{formatRupiah(c.price)} × {c.qty} = {formatRupiah(c.price * c.qty)}</div>
+															</div>
+															<div className="ka-qty-ctrl">
+																<button onClick={() => changeQty(c.productId, -1)}><Ico size={12}>➖</Ico></button>
+																<span>{c.qty}</span>
+																<button onClick={() => changeQty(c.productId, 1)} disabled={c.qty >= c.stock}><Ico size={12}>➕</Ico></button>
+															</div>
+															<button className="rm" onClick={() => removeFromCart(c.productId)}><Ico size={14}>🗑️</Ico></button>
+														</div>
+													))}
+												</div>
+												<div className="ka-cart-summary">
+													<div className="ka-row"><span>Subtotal</span><span className="mono">{formatRupiah(cartTotal)}</span></div>
+													<input
+														className="ka-cash-input"
+														placeholder="Diskon (%)"
+														type="number"
+														value={discountInput}
+														onChange={e => setDiscountInput(e.target.value)}
+													/>
+													{discountPercent > 0 && (
+														<div className="ka-row" style={{ color: '#B5502C' }}>
+															<span>Potongan ({discountPercent}%)</span>
+															<span className="mono">-{formatRupiah(discountAmount)}</span>
+														</div>
+													)}
+													<div className="ka-row total"><span>Total</span><span>{formatRupiah(finalTotal)}</span></div>
+													<div className="ka-period-toggle" style={{ marginBottom: 10 }}>
+														<button className={paymentMethod === 'tunai' ? 'active' : ''} onClick={() => setPaymentMethod('tunai')}>💵 Tunai</button>
+														<button className={paymentMethod === 'qris' ? 'active' : ''} onClick={() => setPaymentMethod('qris')}>📱 QRIS</button>
+													</div>
+													{paymentMethod === 'tunai' ? (
+														<>
+															<input
+																className="ka-cash-input"
+																placeholder="Uang diterima (Rp)"
+																type="number"
+																value={cashInput}
+																onChange={e => setCashInput(e.target.value)}
+															/>
+															{cashInput !== '' && (
+																<div className="ka-row" style={{ color: change < 0 ? '#A23B2E' : '#2F6F4E', fontWeight: 600 }}>
+																	<span>{change < 0 ? 'Kurang' : 'Kembalian'}</span>
+																	<span className="mono">{formatRupiah(Math.abs(change))}</span>
+																</div>
+															)}
+														</>
+													) : (
+														<p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 10px' }}>Pembayaran via QRIS — jumlah dibayar pas, tanpa kembalian.</p>
+													)}
+													<button className="ka-btn primary" disabled={!canCheckout} onClick={checkout}>
+														<Ico size={15}>💰</Ico> Selesaikan Transaksi
+													</button>
+												</div>
+											</>
+										)}
+									</div>
+								</div>
+							)}
+
+							{activeTab === 'produk' && (
+								<div>
+									<div className="ka-produk-head">
+										<h2>{products.length} produk terdaftar</h2>
+										<button className="ka-btn primary" style={{ width: 'auto' }} onClick={openNewProduct}>
+											<Ico size={15}>➕</Ico> Tambah Produk
+										</button>
+									</div>
+
+									{products.length === 0 ? (
+										<div className="ka-empty-state">
+											<Ico size={34}>📦</Ico>
+											<p>Belum ada produk. Tambah produk pertama Anda.</p>
+										</div>
+									) : (
+										<div className="ka-table-wrap">
+											<table className="ka-table">
+												<thead>
+													<tr>
+														<th>Nama</th>
+														<th>Kategori</th>
+														<th>Harga Jual</th>
+														<th>HPP/Porsi</th>
+														<th>Untung/Porsi</th>
+														<th>Stok</th>
+														<th></th>
+													</tr>
+												</thead>
+												<tbody>
+													{products.map(p => {
+														const hasRecipe = (p.recipe || []).length > 0;
+														const yieldQty = Math.max(1, parseFloat(p.portionYield) || 1);
+														const hpp = computeHPP(p.recipe, yieldQty);
+														const profit = p.price - hpp;
+														const marginPct = p.price > 0 ? Math.round((profit / p.price) * 100) : 0;
+														return (
+															<tr key={p.id}>
+																<td style={{ fontWeight: 600 }}>
+																	{p.name}
+																	{hasRecipe && yieldQty > 1 && (
+																		<span style={{ display: 'block', fontSize: 11, color: 'var(--ink-soft)', fontWeight: 400 }}>
+																			Batch: {yieldQty} porsi
+																		</span>
+																	)}
+																</td>
+																<td style={{ color: '#6B7268' }}>{p.category}</td>
+																<td className="price-cell">{formatRupiah(p.price)}</td>
+																<td className="mono" style={{ color: 'var(--ink-soft)' }}>
+																	{hasRecipe ? formatRupiah(hpp) : '–'}
+																	{hasRecipe && yieldQty > 1 && (
+																		<span style={{ fontSize: 10, display: 'block', opacity: 0.8 }}>/porsi</span>
+																	)}
+																</td>
+																<td className="mono" style={{ fontWeight: 600, color: !hasRecipe ? 'var(--ink-soft)' : profit < 0 ? 'var(--danger)' : 'var(--accent)' }}>
+																	{hasRecipe ? `${profit >= 0 ? '+' : ''}${formatRupiah(profit)} (${marginPct}%)` : '–'}
+																</td>
+																<td>{p.stock}</td>
+																<td>
+																	<div className="actions">
+																		<button className="ka-icon-btn" onClick={() => openEditProduct(p)} title="Edit Produk"><Ico size={14}>✏️</Ico></button>
+																		<button className="ka-icon-btn del" onClick={() => deleteProduct(p.id)} title="Hapus Produk"><Ico size={14}>🗑️</Ico></button>
+																	</div>
+																</td>
+															</tr>
+														);
+													})}
+												</tbody>
+											</table>
+										</div>
+									)}
+								</div>
+							)}
+
+							{activeTab === 'riwayat' && (
+								<div>
+									<div className="ka-produk-head" style={{ marginBottom: 14 }}>
+										<h2 style={{ fontSize: 16 }}>Ringkasan</h2>
+										<button className="ka-btn secondary" onClick={exportExcelReport}>📊 Export Excel</button>
+									</div>
+									<div className="ka-summary-row">
+										<div className="ka-summary-card">
+											<div className="label"><Ico size={13}>📈</Ico> Transaksi Hari Ini</div>
+											<div className="value">{todaysTransactions.length}</div>
+										</div>
+										<div className="ka-summary-card">
+											<div className="label"><Ico size={13}>💰</Ico> Pendapatan Hari Ini</div>
+											<div className="value rust mono">{formatRupiah(todaysRevenue)}</div>
+										</div>
+										<div className="ka-summary-card">
+											<div className="label"><Ico size={13}>🧾</Ico> Total Semua Transaksi</div>
+											<div className="value">{transactions.length}</div>
+										</div>
+									</div>
+
+									{(topSellingAllTime || busiestHour) && (
+										<div className="ka-insight-row">
+											{topSellingAllTime && (
+												<div className="ka-insight-card">
+													<span className="ka-insight-icon">🏆</span>
+													<div>
+														<div className="ka-insight-label">Menu Terlaris Sepanjang Masa</div>
+														<div className="ka-insight-value">{topSellingAllTime.name} <span className="mono">· {topSellingAllTime.qty} pcs</span></div>
+													</div>
+												</div>
+											)}
+											{busiestHour && (
+												<div className="ka-insight-card">
+													<span className="ka-insight-icon">⏰</span>
+													<div>
+														<div className="ka-insight-label">Jam Tersibuk</div>
+														<div className="ka-insight-value">{busiestHour.range} <span className="mono">· {busiestHour.count} transaksi</span></div>
+													</div>
+												</div>
+											)}
+										</div>
+									)}
+
+									{itemSalesSummary.length > 0 && (
+										<div style={{ marginBottom: 24 }}>
+											<h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, margin: '0 0 10px' }}>Terjual per Item</h2>
+											<div className="ka-table-wrap">
+												<table className="ka-table">
+													<thead>
+														<tr>
+															<th>Item</th>
+															<th>Hari Ini</th>
+															<th>Minggu Ini</th>
+														</tr>
+													</thead>
+													<tbody>
+														{itemSalesSummary.map(it => (
+															<tr key={it.name}>
+																<td style={{ fontWeight: 600 }}>{it.name}</td>
+																<td className="mono">{it.today} pcs</td>
+																<td className="mono" style={{ fontWeight: 600, color: 'var(--rust)' }}>{it.thisWeek} pcs</td>
+															</tr>
+														))}
+													</tbody>
+												</table>
+											</div>
+										</div>
+									)}
+
+									{transactions.length === 0 ? (
+										<div className="ka-empty-state">
+											<Ico size={34}>🕘</Ico>
+											<p>Belum ada transaksi.</p>
+										</div>
+									) : (
+										transactionsByDate.map((group, idx) => {
+											const isOpen = collapsedDates.hasOwnProperty(group.dateKey) ? !collapsedDates[group.dateKey] : idx === 0;
+											return (
+												<div key={group.dateKey} className="ka-date-group">
+													<div className="ka-date-header ka-date-header-clickable" onClick={() => toggleDateGroup(group.dateKey)}>
+														<span><span className={`ka-chevron ${isOpen ? 'open' : ''}`}>▸</span> {group.label}</span>
+														<span className="mono">{group.items.length} transaksi · {formatRupiah(group.total)}</span>
+													</div>
+													{isOpen && <>
+														<div className="ka-date-breakdown">
+															{group.itemBreakdown.map(it => (
+																<div className="ka-breakdown-row" key={it.name}>
+																	<span className="n">{it.name}</span>
+																	<span className="q mono">{it.qty} pcs</span>
+																	<span className="t mono">{formatRupiah(it.total)}</span>
+																</div>
+															))}
+														</div>
+														<div className="ka-trx-list">
+															{group.items.map(t => (
+																<div className="ka-trx-card" key={t.id} onClick={() => setExpandedTrx(expandedTrx === t.id ? null : t.id)}>
+																	<div className="ka-trx-head">
+																		<span className="id">#{t.id}</span>
+																		<span className="total">{formatRupiah(t.total)}</span>
+																	</div>
+																	<div className="ka-trx-sub">{new Date(t.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} · {t.items.length} item · {t.paymentMethod === 'qris' ? '📱 QRIS' : '💵 Tunai'}</div>
+																	{expandedTrx === t.id && (
+																		<>
+																			<div className="ka-trx-items">
+																				{t.items.map((it, i) => (
+																					<div className="it" key={i}><span>{it.name} × {it.qty}</span><span>{formatRupiah(it.price * it.qty)}</span></div>
+																				))}
+																			</div>
+																			<div className="ka-trx-actions">
+																				<button className="ka-btn danger" onClick={(e) => { e.stopPropagation(); deleteTransaction(t); }}>
+																					<Ico size={13}>🗑️</Ico> Hapus
+																				</button>
+																				<button className="ka-btn secondary" onClick={(e) => { e.stopPropagation(); setLastTransaction(t); setShowReceipt(true); }}>
+																					<Ico size={13}>🖨️</Ico> Cetak Ulang
+																				</button>
+																			</div>
+																		</>
+																	)}
+																</div>
+															))}
+														</div>
+													</>}
+												</div>
+											);
+										})
+									)}
+								</div>
+							)}
+
+							{activeTab === 'modal' && (
+								<div>
+									<div className="ka-summary-row">
+										<div className="ka-summary-card">
+											<div className="label"><Ico size={13}>📉</Ico> Pengeluaran · {periodLabel[expensePeriod]}</div>
+											<div className="value rust mono">{formatRupiah(expenseByPeriod[expensePeriod])}</div>
+											<div className="ka-period-toggle">
+												{['today', 'week', 'month'].map(p => (
+													<button key={p} className={expensePeriod === p ? 'active' : ''} onClick={() => setExpensePeriod(p)}>{periodLabel[p]}</button>
+												))}
+											</div>
+										</div>
+										<div className="ka-summary-card ka-summary-card-clickable" onClick={() => setModalView('margin')}>
+											<div className="label"><Ico size={13}>📈</Ico> Margin · {periodLabel[marginPeriod]} <span className="ka-card-arrow">›</span></div>
+											<div className="value mono" style={{ color: marginByPeriod[marginPeriod] < 0 ? 'var(--danger)' : 'var(--accent)' }}>{formatRupiah(marginByPeriod[marginPeriod])}</div>
+											<div className="ka-period-toggle">
+												{['today', 'week', 'month'].map(p => (
+													<button key={p} className={marginPeriod === p ? 'active' : ''} onClick={(e) => { e.stopPropagation(); setMarginPeriod(p); }}>{periodLabel[p]}</button>
+												))}
+											</div>
+										</div>
+										<div className="ka-summary-card ka-summary-card-clickable" onClick={() => setModalView('expense')}>
+											<div className="label"><Ico size={13}>💰</Ico> Total Semua Waktu <span className="ka-card-arrow">›</span></div>
+											<div className="value mono">{formatRupiah(allTimeExpenses)}</div>
+										</div>
+									</div>
+
+									{modalView === 'default' && <>
+										<div className="ka-produk-head">
+											<h2>Daftar Bahan & Harga</h2>
+											<div style={{ display: 'flex', gap: 8 }}>
+												<button className="ka-btn secondary" onClick={openNewExpenseItem}><Ico size={14}>➕</Ico> Item Baru</button>
+												<button className="ka-btn primary" style={{ width: 'auto' }} onClick={openLogExpense} disabled={expenseItems.length === 0}>
+													<Ico size={14}>📉</Ico> Catat Pengeluaran
+												</button>
+											</div>
+										</div>
+
+										<div className="ka-table-wrap" style={{ marginBottom: 26 }}>
+											<table className="ka-table">
+												<thead>
+													<tr><th>Nama Bahan</th><th>Isi/Kuantitas</th><th>Satuan</th><th>Total Harga Beli</th><th>Harga per Unit</th><th></th></tr>
+												</thead>
+												<tbody>
+													{expenseItems.map(it => {
+														const qty = it.qtyBeli || 1;
+														const unitPrice = it.price / qty;
+														return (
+															<tr key={it.id}>
+																<td style={{ fontWeight: 600 }}>{it.name}</td>
+																<td style={{ color: 'var(--ink-soft)' }}>{qty}</td>
+																<td style={{ color: 'var(--ink-soft)' }}>{it.unit || '-'}</td>
+																<td className="price-cell">{formatRupiah(it.price)}</td>
+																<td className="price-cell" style={{ fontSize: '11.5px', color: 'var(--ink-soft)' }}>{formatRupiah(unitPrice)}/{it.unit || 'unit'}</td>
+																<td>
+																	<div className="actions">
+																		<button className="ka-icon-btn" onClick={() => openEditExpenseItem(it)}><Ico size={14}>✏️</Ico></button>
+																		<button className="ka-icon-btn del" onClick={() => deleteExpenseItem(it.id)}><Ico size={14}>🗑️</Ico></button>
+																	</div>
+																</td>
+															</tr>
+														);
+													})}
+												</tbody>
+											</table>
+										</div>
+
+										<h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, margin: '0 0 12px' }}>Riwayat Pengeluaran</h2>
+										{expensesByDate.length === 0 ? (
+											<div className="ka-empty-state">
+												<Ico size={34}>📉</Ico>
+												<p>Belum ada pengeluaran yang dicatat.</p>
+											</div>
+										) : (
+											expensesByDate.map(group => (
+												<div key={group.dateKey} className="ka-date-group">
+													<div className="ka-date-header">
+														<span>{group.label}</span>
+														<span className="mono">{formatRupiah(group.total)}</span>
+													</div>
+													<div className="ka-trx-list">
+														{group.entries.map(e => (
+															<div className="ka-trx-card" key={e.id} style={{ cursor: 'default' }}>
+																<div className="ka-trx-head">
+																	<span className="id">{e.itemName}{e.unit ? ` (${e.unit})` : ''}</span>
+																	<span className="total">{formatRupiah(e.total)}</span>
+																</div>
+																<div className="ka-trx-sub" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+																	<span>{new Date(e.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} · {e.qty} x {formatRupiah(e.unitPrice)}</span>
+																	<span style={{ display: 'flex', gap: 6 }}>
+																		<button className="ka-icon-btn" onClick={() => openEditExpenseEntry(e)}><Ico size={13}>✏️</Ico></button>
+																		<button className="ka-icon-btn del" onClick={() => deleteExpenseEntry(e.id)}><Ico size={13}>🗑️</Ico></button>
+																	</span>
+																</div>
+															</div>
+														))}
+													</div>
+												</div>
+											))
+										)}
+									</>}
+
+									{modalView === 'expense' && (
+										<div>
+											<button className="ka-btn ghost" style={{ marginBottom: 14, paddingLeft: 0 }} onClick={() => setModalView('default')}>← Kembali ke Ringkasan</button>
+											<div className="ka-analytics-layout">
+												<div className="ka-analytics-sidebar">
+													<div className="ka-field">
+														<label>Kelompokkan</label>
+														<div className="ka-period-toggle" style={{ marginTop: 4 }}>
+															<button className={analyticsGrouping === 'week' ? 'active' : ''} onClick={() => setAnalyticsGrouping('week')}>Mingguan</button>
+															<button className={analyticsGrouping === 'month' ? 'active' : ''} onClick={() => setAnalyticsGrouping('month')}>Bulanan</button>
+														</div>
+													</div>
+													<div className="ka-field">
+														<label>Filter Bahan</label>
+														<select value={expenseFilterItem} onChange={e => setExpenseFilterItem(e.target.value)} style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+															<option value="all">Semua Bahan</option>
+															{expenseItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
+														</select>
+													</div>
+												</div>
+												<div className="ka-analytics-main">
+													<h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, margin: '0 0 4px' }}>Pengeluaran {expenseFilterItem !== 'all' ? `· ${expenseFilterItem}` : ''}</h2>
+													<p style={{ color: 'var(--ink-soft)', fontSize: 12.5, margin: '0 0 16px' }}>{analyticsGrouping === 'week' ? '10 minggu terakhir' : '10 bulan terakhir'}</p>
+													<MiniBarChart data={expenseAnalytics} color="var(--rust)" />
+													<div className="ka-table-wrap" style={{ marginTop: 18 }}>
+														<table className="ka-table">
+															<thead><tr><th>Periode</th><th>Total Pengeluaran</th></tr></thead>
+															<tbody>
+																{[...expenseAnalytics].reverse().map(b => (
+																	<tr key={b.key}><td style={{ fontWeight: 600 }}>{b.label}</td><td className="price-cell">{formatRupiah(b.value)}</td></tr>
+																))}
+															</tbody>
+														</table>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+
+									{modalView === 'margin' && (
+										<div>
+											<button className="ka-btn ghost" style={{ marginBottom: 14, paddingLeft: 0 }} onClick={() => setModalView('default')}>← Kembali ke Ringkasan</button>
+											<div className="ka-analytics-layout">
+												<div className="ka-analytics-sidebar">
+													<div className="ka-field">
+														<label>Kelompokkan</label>
+														<div className="ka-period-toggle" style={{ marginTop: 4 }}>
+															<button className={analyticsGrouping === 'week' ? 'active' : ''} onClick={() => setAnalyticsGrouping('week')}>Mingguan</button>
+															<button className={analyticsGrouping === 'month' ? 'active' : ''} onClick={() => setAnalyticsGrouping('month')}>Bulanan</button>
+														</div>
+													</div>
+												</div>
+												<div className="ka-analytics-main">
+													<h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, margin: '0 0 4px' }}>Margin (Pendapatan − Pengeluaran)</h2>
+													<p style={{ color: 'var(--ink-soft)', fontSize: 12.5, margin: '0 0 16px' }}>{analyticsGrouping === 'week' ? '10 minggu terakhir' : '10 bulan terakhir'}</p>
+													<MiniBarChart data={marginAnalytics} color="var(--accent)" negativeColor="var(--danger)" />
+													<div className="ka-table-wrap" style={{ marginTop: 18 }}>
+														<table className="ka-table">
+															<thead><tr><th>Periode</th><th>Pendapatan</th><th>Pengeluaran</th><th>Margin</th></tr></thead>
+															<tbody>
+																{[...marginAnalytics].reverse().map(b => (
+																	<tr key={b.key}>
+																		<td style={{ fontWeight: 600 }}>{b.label}</td>
+																		<td className="mono">{formatRupiah(b.revenue)}</td>
+																		<td className="mono">{formatRupiah(b.expense)}</td>
+																		<td className="price-cell" style={{ color: b.value < 0 ? 'var(--danger)' : 'var(--accent)' }}>{formatRupiah(b.value)}</td>
+																	</tr>
+																))}
+															</tbody>
+														</table>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					</div>
+
+					{productModal && (() => {
+						const curBatchCost = computeBatchCost(pForm.recipe);
+						const curYield = Math.max(0.0001, parseFloat(pForm.portionYield) || 1);
+						const curHpp = curBatchCost / curYield;
+						const curPrice = parseFloat(pForm.price) || 0;
+						const curProfit = curPrice - curHpp;
+						const curMarginPct = curPrice > 0 ? ((curPrice - curHpp) / curPrice) * 100 : 0;
+
+						const targetMarginVal = Math.min(99, Math.max(1, parseFloat(pForm.targetMargin) || 60));
+						const recPriceExact = curHpp > 0 ? (curHpp / (1 - (targetMarginVal / 100))) : 0;
+						const recPriceRound500 = Math.ceil(recPriceExact / 500) * 500;
+
+						return (
+							<div className="ka-modal-overlay" onClick={closeProductModal}>
+								<div className="ka-modal ka-modal-lg" onClick={e => e.stopPropagation()}>
+									<h3>
+										{productModal === 'new' ? 'Tambah Produk' : 'Edit Produk'}
+										<button onClick={closeProductModal}><Ico size={18}>✖️</Ico></button>
+									</h3>
+									<div className="ka-field">
+										<label>Nama Produk</label>
+										<input value={pForm.name} onChange={e => setPForm({ ...pForm, name: e.target.value })} placeholder="Contoh: Es Krim Vanilla Cup" />
+									</div>
+									<div className="ka-field-row">
+										<div className="ka-field">
+											<label>Harga Jual (Rp)</label>
+											<input type="number" value={pForm.price} onChange={e => setPForm({ ...pForm, price: e.target.value })} placeholder="0" />
+										</div>
+										<div className="ka-field">
+											<label>Stok</label>
+											<input type="number" value={pForm.stock} onChange={e => setPForm({ ...pForm, stock: e.target.value })} placeholder="0" />
+										</div>
+									</div>
+									<div className="ka-field">
+										<label>Kategori</label>
+										<input value={pForm.category} onChange={e => setPForm({ ...pForm, category: e.target.value })} placeholder="Contoh: Minuman" />
+									</div>
+
+									<div className="ka-recipe-section">
+										<label>Resep Bahan Baku (Opsional, untuk hitung HPP)</label>
+										{(pForm.recipe || []).map((r, idx) => {
+											const item = expenseItems.find(it => it.id === r.expenseItemId);
+											return (
+												<div className="ka-recipe-row" key={idx}>
+													<select value={r.expenseItemId} onChange={e => updateRecipeRow(idx, { expenseItemId: e.target.value })}>
+														{expenseItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
+													</select>
+													<input type="number" step="any" placeholder="jml" value={r.qty} onChange={e => updateRecipeRow(idx, { qty: e.target.value })} />
+													<span className="unit">{item && item.unit ? item.unit : ''}</span>
+													<button className="ka-icon-btn del" onClick={() => removeRecipeRow(idx)}><Ico size={13}>🗑️</Ico></button>
+												</div>
+											);
+										})}
+										<button className="ka-btn ghost" style={{ paddingLeft: 0 }} onClick={addRecipeRow} disabled={expenseItems.length === 0}><Ico size={13}>➕</Ico> Tambah Bahan</button>
+
+										<div className="ka-field" style={{ marginTop: 10, marginBottom: 10 }}>
+											<label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+												<span>Hasil Resep / Jumlah Porsi (Yield)</span>
+												<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-soft)' }}>Default: 1 porsi</span>
+											</label>
+											<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+												<input
+													type="number"
+													min="1"
+													step="any"
+													value={pForm.portionYield}
+													onChange={e => setPForm({ ...pForm, portionYield: e.target.value })}
+													placeholder="1"
+													style={{ width: '100px' }}
+												/>
+												<span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>porsi / cup hasil jadi</span>
+											</div>
+											<p style={{ fontSize: 11, color: 'var(--ink-soft)', margin: '4px 0 0' }}>
+												Contoh: Jika takaran resep di atas untuk 1 batch adonan yang menghasilkan 18 cup, isi <strong>18</strong>.
+											</p>
+										</div>
+
+										{(pForm.recipe || []).length > 0 && (
+											<div style={{ background: 'var(--paper-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+												{curYield > 1 && (
+													<div className="ka-row" style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>
+														<span>Total Biaya Resep 1 Batch:</span>
+														<span className="mono">{formatRupiah(curBatchCost)}</span>
+													</div>
+												)}
+												<div className="ka-row" style={{ fontWeight: 600, marginBottom: 0 }}>
+													<span>Estimasi HPP per Porsi:</span>
+													<span className="mono" style={{ color: 'var(--ink)', fontSize: 14 }}>
+														{formatRupiah(curHpp)}
+														{curYield > 1 && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-soft)', marginLeft: 4 }}>(÷ {curYield} porsi)</span>}
+													</span>
+												</div>
+											</div>
+										)}
+									</div>
+
+									{/* Kalkulator Margin & Rekomendasi Harga Jual */}
+									{curHpp > 0 && (
+										<div className="ka-calc-card">
+											<div className="ka-calc-title">
+												<span>💡 Kalkulator Margin & Rekomendasi Harga</span>
+												<span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)' }}>HPP: {formatRupiah(curHpp)}/porsi</span>
+											</div>
+
+											<div style={{ marginBottom: 10 }}>
+												<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+													<label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-soft)' }}>Target Margin Keuntungan:</label>
+													<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+														<input
+															type="number"
+															min="1"
+															max="99"
+															value={pForm.targetMargin}
+															onChange={e => setPForm({ ...pForm, targetMargin: e.target.value })}
+															style={{ width: '50px', padding: '4px 6px', textAlign: 'center', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', fontFamily: "'IBM Plex Mono', monospace" }}
+														/>
+														<span style={{ fontSize: 12, fontWeight: 600 }}>%</span>
+													</div>
+												</div>
+												<div className="ka-chip-group">
+													{[30, 40, 50, 60, 70, 75].map(pct => (
+														<button
+															key={pct}
+															type="button"
+															className={`ka-mini-chip ${String(pct) === String(pForm.targetMargin) ? 'active' : ''}`}
+															onClick={() => setPForm({ ...pForm, targetMargin: String(pct) })}
+														>
+															{pct}%
+														</button>
+													))}
+												</div>
+											</div>
+
+											<div className="ka-rec-box">
+												<div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 4 }}>
+													Saran Harga Jual (Target Margin {targetMarginVal}%):
+												</div>
+												<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+													<span className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--rust)' }}>
+														{formatRupiah(recPriceExact)}
+													</span>
+													<div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+														<button
+															type="button"
+															className="ka-apply-btn"
+															onClick={() => setPForm({ ...pForm, price: String(Math.round(recPriceExact)) })}
+															title="Terapkan harga persis"
+														>
+															Gunakan Pas ({formatRupiah(recPriceExact)})
+														</button>
+														{recPriceRound500 !== Math.round(recPriceExact) && (
+															<button
+																type="button"
+																className="ka-apply-btn"
+																onClick={() => setPForm({ ...pForm, price: String(recPriceRound500) })}
+																title="Terapkan harga dibulatkan"
+															>
+																Bulatkan ({formatRupiah(recPriceRound500)})
+															</button>
+														)}
+													</div>
+												</div>
+											</div>
+
+											{curPrice > 0 && (
+												<div>
+													<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+														<div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 9px' }}>
+															<div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>Untung per Porsi</div>
+															<div className="mono" style={{ fontSize: 13, fontWeight: 700, color: curProfit < 0 ? 'var(--danger)' : 'var(--accent)' }}>
+																{curProfit >= 0 ? '+' : ''}{formatRupiah(curProfit)}
+															</div>
+														</div>
+														<div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 9px' }}>
+															<div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>Margin Nyata</div>
+															<div className="mono" style={{ fontSize: 13, fontWeight: 700, color: curProfit < 0 ? 'var(--danger)' : curMarginPct < 30 ? '#B56200' : 'var(--accent)' }}>
+																{curMarginPct.toFixed(1)}%
+															</div>
+														</div>
+													</div>
+
+													<div className={`ka-stat-badge ${curProfit < 0 ? 'danger' : curMarginPct < 30 ? 'warning' : 'success'}`}>
+														{curProfit < 0 ? (
+															<span>⚠️ Rugi {formatRupiah(Math.abs(curProfit))} / porsi! Naikkan harga jual atau kurangi bahan.</span>
+														) : curMarginPct < 30 ? (
+															<span>⚠️ Margin tipis ({curMarginPct.toFixed(1)}%). Pertimbangkan naikkan harga jual.</span>
+														) : (
+															<span>✅ Margin sehat ({curMarginPct.toFixed(1)}%). Untung {formatRupiah(curProfit)} / porsi.</span>
+														)}
+													</div>
+												</div>
+											)}
+										</div>
+									)}
+
+									<div className="ka-modal-actions">
+										<button className="ka-btn secondary" onClick={closeProductModal}>Batal</button>
+										<button className="ka-btn primary" onClick={submitProduct}>Simpan</button>
+									</div>
+								</div>
+							</div>
+						);
+					})()}
+
+					{expenseItemModal && (
+						<div className="ka-modal-overlay" onClick={() => setExpenseItemModal(null)}>
+							<div className="ka-modal" onClick={e => e.stopPropagation()}>
+								<h3>
+									{expenseItemModal === 'new' ? 'Item Bahan Baru' : 'Edit Bahan'}
+									<button onClick={() => setExpenseItemModal(null)}><Ico size={18}>✖️</Ico></button>
+								</h3>
+								<div className="ka-field">
+									<label>Nama Bahan</label>
+									<input value={eiForm.name} onChange={e => setEiForm({ ...eiForm, name: e.target.value })} placeholder="Contoh: Gelas 22 oz" />
+								</div>
+								<div className="ka-field-row">
+									<div className="ka-field">
+										<label>Kuantitas Beli</label>
+										<input type="number" value={eiForm.qtyBeli} onChange={e => setEiForm({ ...eiForm, qtyBeli: e.target.value })} placeholder="1" />
+									</div>
+									<div className="ka-field">
+										<label>Satuan</label>
+										<input value={eiForm.unit} onChange={e => setEiForm({ ...eiForm, unit: e.target.value })} placeholder="kg / pcs / ml" />
+									</div>
+								</div>
+								<div className="ka-field">
+									<label>Total Harga Beli (Rp)</label>
+									<input type="number" value={eiForm.price} onChange={e => setEiForm({ ...eiForm, price: e.target.value })} placeholder="0" />
+									{eiForm.price && eiForm.qtyBeli && parseFloat(eiForm.qtyBeli) > 0 && (
+										<p style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+											Estimasi Harga per {eiForm.unit || 'unit'}: {formatRupiah(parseFloat(eiForm.price) / parseFloat(eiForm.qtyBeli))}
+										</p>
+									)}
+								</div>
+								<div className="ka-modal-actions">
+									<button className="ka-btn secondary" onClick={() => setExpenseItemModal(null)}>Batal</button>
+									<button className="ka-btn primary" onClick={submitExpenseItem}>Simpan</button>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{showLogExpense && (
+						<div className="ka-modal-overlay" onClick={() => { setShowLogExpense(false); setEditingExpenseEntryId(null); }}>
+							<div className="ka-modal" onClick={e => e.stopPropagation()}>
+								<h3>
+									{editingExpenseEntryId ? 'Edit Pengeluaran' : 'Catat Pengeluaran'}
+									<button onClick={() => { setShowLogExpense(false); setEditingExpenseEntryId(null); }}><Ico size={18}>✖️</Ico></button>
+								</h3>
+								<div className="ka-field">
+									<label>Bahan</label>
+									<select
+										value={logForm.itemId}
+										onChange={e => {
+											const item = expenseItems.find(it => it.id === e.target.value);
+											setLogForm({ ...logForm, itemId: e.target.value, unitPrice: item ? String(item.price) : '' });
+										}}
+										style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13.5, fontFamily: "'IBM Plex Sans', sans-serif" }}
+									>
+										{expenseItems.map(it => (
+											<option key={it.id} value={it.id}>{it.name} {it.qtyBeli ? `(kemasan ${it.qtyBeli} ${it.unit || ''})` : it.unit ? `(${it.unit})` : ''}</option>
+										))}
+									</select>
+								</div>
+								<div className="ka-field-row">
+									<div className="ka-field">
+										<label>Jml Pembelian</label>
+										<input type="number" value={logForm.qty} onChange={e => setLogForm({ ...logForm, qty: e.target.value })} placeholder="1" />
+									</div>
+									<div className="ka-field">
+										<label>Harga/Kemasan (Rp)</label>
+										<input type="number" value={logForm.unitPrice} onChange={e => setLogForm({ ...logForm, unitPrice: e.target.value })} placeholder="0" />
+									</div>
+								</div>
+								<div className="ka-row total" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+									<span>Total</span>
+									<span>{formatRupiah((parseFloat(logForm.qty) || 0) * (parseFloat(logForm.unitPrice) || 0))}</span>
+								</div>
+								<div className="ka-modal-actions">
+									<button className="ka-btn secondary" onClick={() => { setShowLogExpense(false); setEditingExpenseEntryId(null); }}>Batal</button>
+									<button className="ka-btn primary" onClick={submitLogExpense}>Simpan</button>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{showHeldList && (
+						<div className="ka-modal-overlay" onClick={() => setShowHeldList(false)}>
+							<div className="ka-modal" onClick={e => e.stopPropagation()}>
+								<h3>
+									Transaksi Tertahan
+									<button onClick={() => setShowHeldList(false)}><Ico size={18}>✖️</Ico></button>
+								</h3>
+								{heldCarts.length === 0 ? (
+									<p style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Tidak ada transaksi yang ditahan.</p>
+								) : (
+									<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+										{heldCarts.map(h => {
+											const total = h.cart.reduce((s, c) => s + c.price * c.qty, 0);
+											return (
+												<div key={h.id} className="ka-trx-card" style={{ cursor: 'default' }}>
+													<div className="ka-trx-head">
+														<span className="id">{new Date(h.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} · {h.cart.length} item</span>
+														<span className="total">{formatRupiah(total)}</span>
+													</div>
+													<div className="ka-trx-sub" style={{ marginBottom: 8 }}>{h.cart.map(c => c.name).join(', ')}</div>
+													<div className="ka-trx-actions">
+														<button className="ka-btn danger" onClick={() => deleteHeldCart(h.id)}><Ico size={13}>🗑️</Ico> Hapus</button>
+														<button className="ka-btn primary" onClick={() => resumeHeldCart(h)}>Lanjutkan</button>
+													</div>
+												</div>
+											);
+										})}
+									</div>
+								)}
+							</div>
+						</div>
+					)}
+
+					{showSettings && (
+						<div className="ka-modal-overlay" onClick={() => setShowSettings(false)}>
+							<div className="ka-modal" onClick={e => e.stopPropagation()}>
+								<h3>
+									Pengaturan Toko
+									<button onClick={() => setShowSettings(false)}><Ico size={18}>✖️</Ico></button>
+								</h3>
+								<div className="ka-field">
+									<label>Nama Toko</label>
+									<input value={settingsForm.name} onChange={e => setSettingsForm({ ...settingsForm, name: e.target.value })} placeholder="Contoh: Toko Kopi Senja" />
+								</div>
+								<div className="ka-field">
+									<label>Logo (muncul di struk)</label>
+									{settingsForm.logo && (
+										<div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+											<img src={settingsForm.logo} alt="logo" style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)' }} />
+											<button className="ka-btn ghost" onClick={() => setSettingsForm({ ...settingsForm, logo: null })}><Ico size={13}>🗑️</Ico> Hapus logo</button>
+										</div>
+									)}
+									<input type="file" accept="image/*" onChange={handleLogoUpload} />
+								</div>
+								<div className="ka-modal-actions">
+									<button className="ka-btn secondary" onClick={() => setShowSettings(false)}>Batal</button>
+									<button className="ka-btn primary" onClick={submitSettings}>Simpan</button>
+								</div>
+								<div className="ka-backup-section">
+									<label>Laporan Excel</label>
+									<p>Unduh laporan bisnis lengkap (.xlsx): ringkasan margin & insight, harian/mingguan/bulanan, per menu, jam ramai, transaksi, pengeluaran.</p>
+									<div className="ka-modal-actions" style={{ marginTop: 0 }}>
+										<button className="ka-btn primary" onClick={exportExcelReport}>📊 Export Laporan Excel</button>
+									</div>
+									<label style={{ marginTop: 18 }}>Backup Data (untuk memulihkan)</label>
+									<p>File JSON ini bukan buat dibaca di Excel. Fungsinya cuma buat memulihkan semua data kalau HP ganti atau aplikasi terhapus.</p>
+									<div className="ka-modal-actions">
+										<button className="ka-btn secondary" onClick={exportAllData}><Ico size={14}>📤</Ico> Backup JSON</button>
+										<label className="ka-btn secondary" style={{ cursor: 'pointer', textAlign: 'center' }}>
+											<Ico size={14}>➕</Ico> Import Data
+											<input type="file" accept="application/json" onChange={importAllData} style={{ display: 'none' }} />
+										</label>
+									</div>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{showReceipt && lastTransaction && (
+						<div className="ka-modal-overlay" onClick={() => setShowReceipt(false)}>
+							<div className="ka-modal" onClick={e => e.stopPropagation()}>
+								<h3>
+									Struk Transaksi
+									<button onClick={() => setShowReceipt(false)}><Ico size={18}>✖️</Ico></button>
+								</h3>
+								<div id="receipt-content">
+									<div className="ka-receipt-head">
+										{storeSettings.logo && <img src={storeSettings.logo} alt="logo" style={{ width: 44, height: 44, objectFit: 'contain', margin: '0 auto 6px' }} />}
+										<div className="store">{storeSettings.name || 'Toko Saya'}</div>
+										<div className="meta">{formatDateTime(lastTransaction.timestamp)}</div>
+										<div className="meta">No. #{lastTransaction.id}</div>
+									</div>
+									<div className="ka-receipt-divider" />
+									{lastTransaction.items.map((it, i) => (
+										<div className="ka-receipt-line" key={i}>
+											<span>{it.name}<br /><span className="qp">{it.qty} × {formatRupiah(it.price)}</span></span>
+											<span>{formatRupiah(it.price * it.qty)}</span>
+										</div>
+									))}
+									<div className="ka-receipt-divider" />
+									{lastTransaction.discountAmount > 0 && (
+										<>
+											<div className="ka-receipt-line"><span>Subtotal</span><span>{formatRupiah(lastTransaction.subtotal)}</span></div>
+											<div className="ka-receipt-line"><span>Diskon ({lastTransaction.discountPercent}%)</span><span>-{formatRupiah(lastTransaction.discountAmount)}</span></div>
+										</>
+									)}
+									<div className="ka-receipt-total-row"><span>Total</span><span>{formatRupiah(lastTransaction.total)}</span></div>
+									<div className="ka-receipt-line"><span>Bayar via</span><span>{lastTransaction.paymentMethod === 'qris' ? 'QRIS' : 'Tunai'}</span></div>
+									{lastTransaction.paymentMethod !== 'qris' && (
+										<>
+											<div className="ka-receipt-line"><span>Tunai</span><span>{formatRupiah(lastTransaction.cash)}</span></div>
+											<div className="ka-receipt-line"><span>Kembali</span><span>{formatRupiah(lastTransaction.change)}</span></div>
+										</>
+									)}
+									<div className="ka-receipt-divider" />
+									<div style={{ textAlign: 'center', fontSize: 11.5, color: '#6B7268', marginTop: 10 }}>Terima kasih atas kunjungan Anda</div>
+								</div>
+								<div className="ka-modal-actions" style={{ flexWrap: 'wrap' }}>
+									<button className="ka-btn secondary" onClick={() => setShowReceipt(false)}>Tutup</button>
+									<button className="ka-btn secondary" onClick={shareOrSaveReceipt}><Ico size={15}>📤</Ico> Bagikan/Simpan</button>
+									<button className="ka-btn secondary" onClick={printViaBluetooth} disabled={btPrinting}>
+										{btPrinting ? 'Menghubungkan…' : <><Ico size={15}>🖨️</Ico> Bluetooth</>}
+									</button>
+									<button className="ka-btn primary" onClick={printReceipt}><Ico size={15}>🖨️</Ico> Cetak</button>
+								</div>
+								<p style={{ fontSize: 10.5, color: 'var(--ink-soft)', marginTop: 8, marginBottom: 0 }}>Cetak Bluetooth hanya berfungsi di Chrome Android dengan printer thermal yang sudah di-pairing.</p>
+							</div>
+						</div>
+					)}
+				</div>
+			);
+		}
+
+
+		const root = ReactDOM.createRoot(document.getElementById('root'));
+		root.render(<KasirApp />);
+	</script>
+	<script>
+		if ('serviceWorker' in navigator) {
+			window.addEventListener('load', () => {
+				navigator.serviceWorker.register('sw.js').catch(() => { });
+			});
+		}
+	</script>
+</body>
+
+
+</html>
